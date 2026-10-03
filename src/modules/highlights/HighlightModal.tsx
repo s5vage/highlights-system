@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { Highlight } from '@/lib/types';
-import { COLOR_HEX, readingTime, timeAgo } from './helpers';
+import { COLOR_HEX, readingTime, timeAgo, escapeHtml } from './helpers';
 
 interface Props {
   highlight: Highlight;
@@ -158,11 +158,10 @@ export default function HighlightModal({
 
         <div className="px-6 py-5 overflow-y-auto flex-1">
           <div
-            className="text-[15px] leading-relaxed whitespace-pre-wrap"
+            className="hl-content text-[15px] leading-relaxed"
             style={{ color: 'var(--text)' }}
-          >
-            {highlight.text}
-          </div>
+            dangerouslySetInnerHTML={{ __html: highlight.html || escapeHtml(highlight.text) }}
+          />
         </div>
 
         <div

@@ -21,6 +21,14 @@ export function timeAgo(ts: string): string {
   return new Date(ts).toLocaleDateString();
 }
 
+export function escapeHtml(s: string): string {
+  return (s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br/>');
+}
+
 export function readingTime(text: string): string {
   const words = (text || '').trim().split(/\s+/).filter(Boolean).length;
   return `${Math.max(1, Math.round(words / 200))} min`;

@@ -1,5 +1,5 @@
 import { Highlight } from '@/lib/types';
-import { COLOR_HEX, readingTime, timeAgo } from './helpers';
+import { COLOR_HEX, readingTime, timeAgo, escapeHtml } from './helpers';
 
 interface Props {
   highlight: Highlight;
@@ -24,9 +24,10 @@ export default function HighlightCard({ highlight, pinned, onClick }: Props) {
           PINNED
         </div>
       )}
-      <div className="text-sm text-[var(--text)] leading-relaxed max-h-28 overflow-hidden mb-3 whitespace-pre-wrap">
-        {highlight.text}
-      </div>
+      <div
+        className="hl-content text-sm text-[var(--text)] leading-relaxed max-h-28 overflow-hidden mb-3"
+        dangerouslySetInnerHTML={{ __html: highlight.html || escapeHtml(highlight.text) }}
+      />
       <div className="flex items-center flex-wrap gap-2 pt-3 border-t border-[var(--border)]">
         {(highlight.tags || []).map((t) => (
           <span key={t} className="text-[11px] font-mono text-[var(--text-dim)]">
