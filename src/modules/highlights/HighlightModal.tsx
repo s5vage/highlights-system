@@ -1,3 +1,6 @@
+'use client';
+
+import { useEffect, useRef } from 'react';
 import { Highlight } from '@/lib/types';
 import { COLOR_HEX, readingTime, timeAgo } from './helpers';
 
@@ -16,7 +19,70 @@ export default function HighlightModal({
   onTogglePin,
   onDelete,
 }: Props) {
+  const modalRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
   const color = COLOR_HEX[highlight.color] || COLOR_HEX.yellow;
+
+  useEffect(() => {
+    const modal = modalRef.current;
+    const header = headerRef.current;
+    if (!modal || !header) return;
+    if (window.innerWidth <= 760) return;
+
+    let dragging = false;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+
+    function toFixed() {
+      if (!modal) return;
+      const rect = modal.getBoundingClientRect();
+      modal.style.position = 'fixed';
+      modal.style.left = rect.left + 'px';
+      modal.style.top = rect.top + 'px';
+      modal.style.width = rect.width + 'px';
+      modal.style.height = rect.height + 'px';
+      modal.style.margin = '0';
+    }
+
+    function onMouseDown(e: MouseEvent) {
+      if ((e.target as HTMLElement).closest('[data-no-drag]')) return;
+      if (!modal) return;
+      if (modal.style.position !== 'fixed') toFixed();
+      dragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      startLeft = parseInt(modal.style.left || '0', 10);
+      startTop = parseInt(modal.style.top || '0', 10);
+      document.body.style.userSelect = 'none';
+    }
+
+    function onMouseMove(e: MouseEvent) {
+      if (!dragging || !modal) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const maxLeft = window.innerWidth - modal.offsetWidth;
+      const maxTop = window.innerHeight - modal.offsetHeight;
+      modal.style.left = Math.max(0, Math.min(maxLeft, startLeft + dx)) + 'px';
+      modal.style.top = Math.max(0, Math.min(maxTop, startTop + dy)) + 'px';
+    }
+
+    function onMouseUp() {
+      dragging = false;
+      document.body.style.userSelect = '';
+    }
+
+    header.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+
+    return () => {
+      header.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
 
   let host = '';
   try {
@@ -38,42 +104,81 @@ export default function HighlightModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+      style={{ background: 'var(--overlay)' }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="relative bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+      <div
+        ref={modalRef}
+        className="relative flex flex-col overflow-hidden rounded-2xl border resize-none md:resize"
+        style={{
+          background: 'var(--surface)',
+          borderColor: 'var(--border)',
+          width: 'min(580px, 92vw)',
+          height: 'min(600px, 85vh)',
+          minWidth: 320,
+          minHeight: 280,
+          maxWidth: '94vw',
+          maxHeight: '90vh',
+        }}
+      >
         <div
           className="absolute left-0 top-0 w-1 h-16 rounded-tl-2xl"
           style={{ background: color }}
         />
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-neutral-800">
-          <span className="text-xs font-mono text-neutral-500">
+        <div
+          ref={headerRef}
+          className="flex items-center gap-3 px-6 py-4 border-b cursor-grab active:cursor-grabbing select-none"
+          style={{ borderColor: 'var(--border)' }}
+        >
+          <span className="text-xs font-mono" style={{ color: 'var(--text-faint)' }}>
             {(host || 'saved') + ' · ' + timeAgo(highlight.created_at)}
           </span>
-          <span className="text-xs font-mono text-neutral-600 ml-auto mr-2">
+          <span
+            className="text-xs font-mono ml-auto mr-2"
+            style={{ color: 'var(--text-faint)' }}
+          >
             {readingTime(highlight.text)}
           </span>
           <button
+            data-no-drag
             onClick={onClose}
-            className="w-7 h-7 rounded-md bg-neutral-950 border border-neutral-800 flex items-center justify-center text-neutral-500 hover:text-neutral-200"
+            className="w-7 h-7 rounded-md border flex items-center justify-center hover:opacity-80"
+            style={{
+              background: 'var(--bg)',
+              borderColor: 'var(--border)',
+              color: 'var(--text-dim)',
+            }}
           >
             ✕
           </button>
         </div>
 
         <div className="px-6 py-5 overflow-y-auto flex-1">
-          <div className="text-[15px] leading-relaxed text-neutral-100 whitespace-pre-wrap">
+          <div
+            className="text-[15px] leading-relaxed whitespace-pre-wrap"
+            style={{ color: 'var(--text)' }}
+          >
             {highlight.text}
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-t border-neutral-800">
+        <div
+          data-no-drag
+          className="flex flex-wrap items-center gap-2 px-5 py-3 border-t"
+          style={{ borderColor: 'var(--border)' }}
+        >
           {(highlight.tags || []).map((t) => (
             <span
               key={t}
-              className="text-[11px] font-mono text-neutral-400 bg-neutral-950 border border-neutral-800 rounded-full px-2.5 py-1"
+              className="text-[11px] font-mono rounded-full px-2.5 py-1 border"
+              style={{
+                color: 'var(--text-dim)',
+                background: 'var(--bg)',
+                borderColor: 'var(--border)',
+              }}
             >
               #{t}
             </span>
@@ -81,13 +186,23 @@ export default function HighlightModal({
           <div className="ml-auto flex gap-2">
             <button
               onClick={copyText}
-              className="text-xs font-mono text-neutral-400 bg-neutral-950 border border-neutral-800 rounded-md px-3 py-2 hover:text-neutral-100"
+              className="text-xs font-mono rounded-md px-3 py-2 border hover:opacity-80"
+              style={{
+                color: 'var(--text-dim)',
+                background: 'var(--bg)',
+                borderColor: 'var(--border)',
+              }}
             >
               Copy
             </button>
             <button
               onClick={onTogglePin}
-              className="text-xs font-mono text-neutral-400 bg-neutral-950 border border-neutral-800 rounded-md px-3 py-2 hover:text-neutral-100"
+              className="text-xs font-mono rounded-md px-3 py-2 border hover:opacity-80"
+              style={{
+                color: 'var(--text-dim)',
+                background: 'var(--bg)',
+                borderColor: 'var(--border)',
+              }}
             >
               {pinned ? 'Unpin' : 'Pin'}
             </button>
@@ -96,14 +211,20 @@ export default function HighlightModal({
                 href={highlight.url}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs font-mono bg-neutral-100 text-neutral-900 rounded-md px-3 py-2 hover:opacity-85"
+                className="text-xs font-mono rounded-md px-3 py-2 hover:opacity-85"
+                style={{ background: 'var(--text)', color: 'var(--bg)' }}
               >
                 Open
               </a>
             )}
             <button
               onClick={handleDelete}
-              className="text-xs font-mono text-neutral-400 bg-neutral-950 border border-neutral-800 rounded-md px-3 py-2 hover:text-red-400 hover:border-red-900"
+              className="text-xs font-mono rounded-md px-3 py-2 border hover:text-red-400 hover:border-red-900"
+              style={{
+                color: 'var(--text-dim)',
+                background: 'var(--bg)',
+                borderColor: 'var(--border)',
+              }}
             >
               Delete
             </button>

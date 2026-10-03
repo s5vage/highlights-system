@@ -49,7 +49,7 @@ export default function Page() {
   const activeTab = tabs.find((t) => t.tabId === activeTabId) ?? HOME_TAB;
 
   return (
-    <div className="h-screen flex flex-col bg-neutral-950">
+    <div className="h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
       <TabBar
         tabs={tabs}
         activeTabId={activeTabId}
