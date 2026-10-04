@@ -41,6 +41,8 @@ export interface Note {
   tags: string[];
   color: string | null;
   folder_id: string | null;
+  is_journal: boolean;
+  journal_date: string | null; // YYYY-MM-DD
   created_at: string;
   updated_at: string;
 }

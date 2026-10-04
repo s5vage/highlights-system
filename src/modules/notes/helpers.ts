@@ -25,6 +25,22 @@ export function colorHex(id: string | null | undefined): string | null {
   return NOTE_COLORS.find((c) => c.id === id)?.hex ?? null;
 }
 
+export function toDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function formatJournalDate(dateStr: string): string {
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 export function timeAgo(ts: string): string {
   if (!ts) return '';
   const diff = Date.now() - new Date(ts).getTime();

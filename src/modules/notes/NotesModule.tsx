@@ -12,14 +12,20 @@ import FontFamily from '@tiptap/extension-font-family';
 import { useNotes } from './useNotes';
 import { useFolders } from './useFolders';
 import EditorToolbar from './EditorToolbar';
-import { NOTE_COLORS, colorHex, timeAgo } from './helpers';
+import { NOTE_COLORS, colorHex, timeAgo, toDateStr, formatJournalDate } from './helpers';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 export default function NotesModule() {
-  const { notes, loading, error, createNote, updateNote, deleteNote } = useNotes();
+  const { notes, loading, error, createNote, updateNote, deleteNote, getOrCreateJournalEntry } = useNotes();
   const { folders, createFolder, deleteFolder } = useFolders();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeFolder, setActiveFolder] = useState<string | null | 'all'>('all');
+  const [journalMode, setJournalMode] = useState(false);
+  const [journalDate, setJournalDate] = useState<string>(toDateStr(new Date()));
+
+  const journalEntries = [...notes]
+    .filter((n) => n.is_journal)
+    .sort((a, b) => (b.journal_date || '').localeCompare(a.journal_date || ''));
 
   const selected = notes.find((n) => n.id === selectedId) || null;
 
@@ -80,6 +86,28 @@ export default function NotesModule() {
     }
   }
 
+  async function openJournalDate(dateStr: string) {
+    setJournalDate(dateStr);
+    const entry = await getOrCreateJournalEntry(dateStr);
+    if (entry) setSelectedId(entry.id);
+  }
+
+  function openJournal() {
+    setJournalMode(true);
+    openJournalDate(toDateStr(new Date()));
+  }
+
+  function exitJournal(toFolder: string | null | 'all') {
+    setJournalMode(false);
+    setActiveFolder(toFolder);
+  }
+
+  function shiftJournalDay(delta: number) {
+    const d = new Date(journalDate + 'T00:00:00');
+    d.setDate(d.getDate() + delta);
+    openJournalDate(toDateStr(d));
+  }
+
   async function handleNewFolder() {
     const name = prompt('Folder name');
     if (!name) return;
@@ -121,6 +149,7 @@ export default function NotesModule() {
 
   return (
     <div className="h-full flex" style={{ background: 'var(--bg)' }}>
+      {/* Folders rail */}
       <div
         className="w-[150px] shrink-0 border-r p-3 overflow-y-auto hidden lg:block"
         style={{ borderColor: 'var(--border)' }}
@@ -129,25 +158,32 @@ export default function NotesModule() {
           Folders
         </div>
         <button
-          onClick={() => setActiveFolder('all')}
+          onClick={openJournal}
+          className="w-full text-left px-2 py-1.5 rounded-md text-[13px] mb-2"
+          style={journalMode ? { background: 'var(--surface)', color: 'var(--text)' } : { color: 'var(--text-dim)' }}
+        >
+          📅 Journal
+        </button>
+        <button
+          onClick={() => exitJournal('all')}
           className="w-full text-left px-2 py-1.5 rounded-md text-[13px] mb-0.5"
-          style={activeFolder === 'all' ? { background: 'var(--surface)', color: 'var(--text)' } : { color: 'var(--text-dim)' }}
+          style={!journalMode && activeFolder === 'all' ? { background: 'var(--surface)', color: 'var(--text)' } : { color: 'var(--text-dim)' }}
         >
           All notes
         </button>
         <button
-          onClick={() => setActiveFolder(null)}
+          onClick={() => exitJournal(null)}
           className="w-full text-left px-2 py-1.5 rounded-md text-[13px] mb-2"
-          style={activeFolder === null ? { background: 'var(--surface)', color: 'var(--text)' } : { color: 'var(--text-dim)' }}
+          style={!journalMode && activeFolder === null ? { background: 'var(--surface)', color: 'var(--text)' } : { color: 'var(--text-dim)' }}
         >
           Unfiled
         </button>
         {folders.map((f) => (
           <div key={f.id} className="group relative">
             <button
-              onClick={() => setActiveFolder(f.id)}
+              onClick={() => exitJournal(f.id)}
               className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-[13px] mb-0.5 pr-6"
-              style={activeFolder === f.id ? { background: 'var(--surface)', color: 'var(--text)' } : { color: 'var(--text-dim)' }}
+              style={!journalMode && activeFolder === f.id ? { background: 'var(--surface)', color: 'var(--text)' } : { color: 'var(--text-dim)' }}
             >
               <span
                 className="w-2 h-2 rounded-full shrink-0"
@@ -173,20 +209,60 @@ export default function NotesModule() {
         </button>
       </div>
 
+      {/* Note list */}
       <div
         className="w-[230px] shrink-0 border-r flex flex-col hidden md:flex"
         style={{ borderColor: 'var(--border)' }}
       >
         <div className="p-3 border-b" style={{ borderColor: 'var(--border)' }}>
-          <button
-            onClick={handleCreate}
-            className="w-full text-sm font-medium rounded-lg py-2"
-            style={{ background: 'var(--text)', color: 'var(--bg)' }}
-          >
-            + New note
-          </button>
+          {journalMode ? (
+            <button
+              onClick={() => openJournalDate(toDateStr(new Date()))}
+              className="w-full text-sm font-medium rounded-lg py-2"
+              style={{ background: 'var(--text)', color: 'var(--bg)' }}
+            >
+              Jump to today
+            </button>
+          ) : (
+            <button
+              onClick={handleCreate}
+              className="w-full text-sm font-medium rounded-lg py-2"
+              style={{ background: 'var(--text)', color: 'var(--bg)' }}
+            >
+              + New note
+            </button>
+          )}
         </div>
         <div className="flex-1 overflow-y-auto p-2">
+          {journalMode ? (
+            <>
+              {journalEntries.length === 0 && (
+                <div className="text-xs text-center py-10 px-3" style={{ color: 'var(--text-faint)' }}>
+                  No journal entries yet.
+                </div>
+              )}
+              {journalEntries.map((n) => (
+                <div
+                  key={n.id}
+                  onClick={() => n.journal_date && openJournalDate(n.journal_date)}
+                  className="rounded-lg px-3 py-2.5 cursor-pointer mb-1"
+                  style={
+                    journalDate === n.journal_date
+                      ? { background: 'var(--surface)' }
+                      : { background: 'transparent' }
+                  }
+                >
+                  <div className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>
+                    {n.journal_date ? formatJournalDate(n.journal_date) : n.title}
+                  </div>
+                  <div className="text-[11px] font-mono mt-0.5" style={{ color: 'var(--text-faint)' }}>
+                    {timeAgo(n.updated_at)}
+                  </div>
+                </div>
+              ))}
+            </>
+          ) : (
+            <>
           {visibleNotes.length === 0 && (
             <div className="text-xs text-center py-10 px-3" style={{ color: 'var(--text-faint)' }}>
               No notes here yet.
@@ -223,9 +299,12 @@ export default function NotesModule() {
               </div>
             );
           })}
+            </>
+          )}
         </div>
       </div>
 
+      {/* Editor */}
       <div className="flex-1 min-w-0 flex flex-col">
         {!selected ? (
           <div className="h-full flex items-center justify-center text-center px-6">
@@ -245,6 +324,39 @@ export default function NotesModule() {
           </div>
         ) : (
           <>
+            {journalMode && (
+              <div
+                className="flex items-center gap-3 px-6 pt-5 pb-3 border-b"
+                style={{ borderColor: 'var(--border)' }}
+              >
+                <button
+                  onClick={() => shiftJournalDay(-1)}
+                  className="w-7 h-7 rounded-md border flex items-center justify-center"
+                  style={{ borderColor: 'var(--border)', color: 'var(--text-dim)' }}
+                >
+                  ←
+                </button>
+                <div className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+                  {formatJournalDate(journalDate)}
+                </div>
+                <button
+                  onClick={() => shiftJournalDay(1)}
+                  className="w-7 h-7 rounded-md border flex items-center justify-center"
+                  style={{ borderColor: 'var(--border)', color: 'var(--text-dim)' }}
+                >
+                  →
+                </button>
+                {journalDate !== toDateStr(new Date()) && (
+                  <button
+                    onClick={() => openJournalDate(toDateStr(new Date()))}
+                    className="text-xs font-mono ml-1"
+                    style={{ color: 'var(--text-faint)' }}
+                  >
+                    Today
+                  </button>
+                )}
+              </div>
+            )}
             <div className="flex items-start gap-3 px-6 pt-6 pb-1">
               <input
                 value={selected.title}
