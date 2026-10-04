@@ -11,6 +11,11 @@
   --text-faint: #525250;
   --overlay: rgba(0, 0, 0, 0.72);
 
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  --background: var(--bg);
+
   --background: var(--bg);
   --foreground: var(--text);
 }
@@ -64,3 +69,71 @@ body {
   border-radius: 4px;
 }
 .hl-content a { color: var(--text); text-decoration: underline; }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+
+.tiptap-content .ProseMirror {
+  outline: none;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.7;
+  min-height: 60vh;
+}
+.tiptap-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-faint);
+  pointer-events: none;
+  height: 0;
+}
+.tiptap-content h1, .tiptap-content h2, .tiptap-content h3 {
+  font-weight: 700;
+  margin: 20px 0 10px 0;
+}
+.tiptap-content h1:first-child, .tiptap-content h2:first-child, .tiptap-content h3:first-child {
+  margin-top: 0;
+}
+.tiptap-content p { margin: 0 0 12px 0; }
+.tiptap-content ul, .tiptap-content ol { margin: 0 0 12px 24px; }
+.tiptap-content li { margin-bottom: 4px; }
+.tiptap-content blockquote {
+  border-left: 3px solid var(--border-light);
+  padding-left: 14px;
+  color: var(--text-dim);
+  margin: 0 0 12px 0;
+}
+.tiptap-content pre {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  margin: 0 0 12px 0;
+}
+.tiptap-content code {
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+.tiptap-content pre code {
+  background: none;
+  padding: 0;
+}
+.tiptap-content ul[data-type="taskList"] {
+  list-style: none;
+  margin-left: 0;
+  padding-left: 0;
+}
+.tiptap-content ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.tiptap-content ul[data-type="taskList"] li > label {
+  margin-top: 3px;
+}
+.tiptap-content ul[data-type="taskList"] li[data-checked="true"] > div > p {
+  text-decoration: line-through;
+  color: var(--text-faint);
+}

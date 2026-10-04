@@ -5,6 +5,7 @@ import TabBar from '@/components/TabBar';
 import DashboardHome from '@/components/DashboardHome';
 import PlaceholderModule from '@/modules/PlaceholderModule';
 import HighlightsModule from '@/modules/highlights/HighlightsModule';
+import NotesModule from '@/modules/notes/NotesModule';
 import { MODULES } from '@/lib/modules';
 import { ModuleId, OpenTab } from '@/lib/types';
 
@@ -49,7 +50,7 @@ export default function Page() {
   const activeTab = tabs.find((t) => t.tabId === activeTabId) ?? HOME_TAB;
 
   return (
-    <div className="h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
+        <div className="h-dvh flex flex-col" style={{ background: 'var(--bg)' }}>
       <TabBar
         tabs={tabs}
         activeTabId={activeTabId}
@@ -63,13 +64,7 @@ export default function Page() {
         )}
                 {activeTab.moduleId === 'highlights' && <HighlightsModule />}
 
-        {activeTab.moduleId === 'notes' && (
-          <PlaceholderModule
-            title="Notes"
-            icon="📝"
-            note="Rich-text note editor (Tiptap) goes here in the next build step."
-          />
-        )}
+        {activeTab.moduleId === 'notes' && <NotesModule />}
         {activeTab.moduleId === 'canvas' && (
           <PlaceholderModule
             title="Canvas"

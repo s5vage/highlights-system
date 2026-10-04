@@ -27,6 +27,15 @@ export interface Highlight {
   created_at: string;
 } 
 
+export interface Note {
+  id: string;
+  title: string;
+  content: unknown; // Tiptap JSON document
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
 export type TabModuleId = ModuleId | 'home';
 
 export interface OpenTab {

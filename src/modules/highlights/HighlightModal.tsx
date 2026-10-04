@@ -104,7 +104,7 @@ export default function HighlightModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4 backdrop-blur-sm"
       style={{ background: 'var(--overlay)' }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -112,16 +112,16 @@ export default function HighlightModal({
     >
       <div
         ref={modalRef}
-        className="relative flex flex-col overflow-hidden rounded-2xl border resize-none md:resize"
+        className="relative flex flex-col overflow-hidden border resize-none md:resize
+          w-full md:w-[min(580px,92vw)]
+          h-[85dvh] md:h-[min(600px,85vh)]
+          md:min-w-[320px] md:min-h-[280px]
+          md:max-w-[94vw] md:max-h-[90vh]
+          rounded-t-2xl md:rounded-2xl"
         style={{
           background: 'var(--surface)',
           borderColor: 'var(--border)',
-          width: 'min(580px, 92vw)',
-          height: 'min(600px, 85vh)',
-          minWidth: 320,
-          minHeight: 280,
-          maxWidth: '94vw',
-          maxHeight: '90vh',
+          paddingBottom: 'var(--safe-bottom)',
         }}
       >
         <div

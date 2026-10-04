@@ -170,7 +170,57 @@ export default function HighlightsModule() {
         ))}
       </div>
 
-      <div className="flex-1 min-w-0 overflow-y-auto p-5">
+            <div className="flex-1 min-w-0 overflow-y-auto p-5">
+        {/* Mobile tag chips — replaces the sidebar on small screens */}
+        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 mb-4 md:hidden">
+          <button
+            onClick={() => {
+              setActiveTag(null);
+              setShowPinnedOnly(false);
+            }}
+            className="whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-mono shrink-0"
+            style={
+              !activeTag && !showPinnedOnly
+                ? { background: 'var(--text)', color: 'var(--bg)', borderColor: 'var(--text)' }
+                : { borderColor: 'var(--border)', color: 'var(--text-dim)' }
+            }
+          >
+            All
+          </button>
+          <button
+            onClick={() => {
+              setShowPinnedOnly(true);
+              setActiveTag(null);
+            }}
+            className="whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-mono shrink-0"
+            style={
+              showPinnedOnly
+                ? { background: 'var(--text)', color: 'var(--bg)', borderColor: 'var(--text)' }
+                : { borderColor: 'var(--border)', color: 'var(--text-dim)' }
+            }
+          >
+            Pinned
+          </button>
+          {tagCounts.map(([tag]) => (
+            <button
+              key={tag}
+              onClick={() => {
+                setActiveTag(tag);
+                setShowPinnedOnly(false);
+              }}
+              className="whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-mono shrink-0"
+              style={
+                activeTag === tag
+                  ? { background: 'var(--text)', color: 'var(--bg)', borderColor: 'var(--text)' }
+                  : { borderColor: 'var(--border)', color: 'var(--text-dim)' }
+              }
+            >
+              #{tag}
+            </button>
+          ))}
+        </div>
+
+        
         <div className="flex gap-0 border border-neutral-800 rounded-lg overflow-hidden max-w-md mb-5">
           <div className="flex-1 px-4 py-3 border-r border-neutral-800">
             <div className="font-mono text-lg">{highlights.length}</div>

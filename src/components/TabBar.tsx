@@ -18,7 +18,10 @@ export default function TabBar({ tabs, activeTabId, onSelect, onClose }: Props) 
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <div className="flex items-stretch bg-[var(--bg)] border-b border-[var(--border)]">
+    <div
+      className="flex items-stretch bg-[var(--bg)] border-b border-[var(--border)]"
+      style={{ paddingTop: 'var(--safe-top)' }}
+    >
       <div className="flex items-stretch overflow-x-auto flex-1 min-w-0">
         {tabs.map((tab) => {
           const active = tab.tabId === activeTabId;
