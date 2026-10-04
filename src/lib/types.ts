@@ -27,11 +27,20 @@ export interface Highlight {
   created_at: string;
 } 
 
+export interface Folder {
+  id: string;
+  name: string;
+  color: string | null;
+  created_at: string;
+}
+
 export interface Note {
   id: string;
   title: string;
   content: unknown; // Tiptap JSON document
   tags: string[];
+  color: string | null;
+  folder_id: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -6,28 +6,29 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
+import Highlight from '@tiptap/extension-highlight';
+import { TextStyle } from '@tiptap/extension-text-style';
+import FontFamily from '@tiptap/extension-font-family';
 import { useNotes } from './useNotes';
+import { useFolders } from './useFolders';
 import EditorToolbar from './EditorToolbar';
+import { NOTE_COLORS, colorHex, timeAgo } from './helpers';
 import { isSupabaseConfigured } from '@/lib/supabase';
-
-function timeAgo(ts: string): string {
-  if (!ts) return '';
-  const diff = Date.now() - new Date(ts).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return 'now';
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d`;
-  return new Date(ts).toLocaleDateString();
-}
 
 export default function NotesModule() {
   const { notes, loading, error, createNote, updateNote, deleteNote } = useNotes();
+  const { folders, createFolder, deleteFolder } = useFolders();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activeFolder, setActiveFolder] = useState<string | null | 'all'>('all');
 
   const selected = notes.find((n) => n.id === selectedId) || null;
+
+  const visibleNotes =
+    activeFolder === 'all'
+      ? notes
+      : activeFolder === null
+      ? notes.filter((n) => !n.folder_id)
+      : notes.filter((n) => n.folder_id === activeFolder);
 
   const editor = useEditor({
     extensions: [
@@ -35,6 +36,9 @@ export default function NotesModule() {
       Placeholder.configure({ placeholder: 'Start writing…' }),
       TaskList,
       TaskItem.configure({ nested: true }),
+      TextStyle,
+      FontFamily,
+      Highlight.configure({ multicolor: true }),
     ],
     content: '',
     immediatelyRender: false,
@@ -44,10 +48,11 @@ export default function NotesModule() {
   });
 
   useEffect(() => {
-    if (!selectedId && notes.length > 0) {
-      setSelectedId(notes[0].id);
+    if (!selectedId && visibleNotes.length > 0) {
+      setSelectedId(visibleNotes[0].id);
     }
-  }, [notes, selectedId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notes]);
 
   useEffect(() => {
     if (!editor) return;
@@ -61,7 +66,8 @@ export default function NotesModule() {
   }, [selectedId, editor]);
 
   async function handleCreate() {
-    const note = await createNote();
+    const folderId = activeFolder === 'all' || activeFolder === null ? null : activeFolder;
+    const note = await createNote(folderId);
     if (note) setSelectedId(note.id);
   }
 
@@ -69,9 +75,15 @@ export default function NotesModule() {
     if (!confirm('Delete this note?')) return;
     deleteNote(id);
     if (selectedId === id) {
-      const remaining = notes.filter((n) => n.id !== id);
+      const remaining = visibleNotes.filter((n) => n.id !== id);
       setSelectedId(remaining[0]?.id ?? null);
     }
+  }
+
+  async function handleNewFolder() {
+    const name = prompt('Folder name');
+    if (!name) return;
+    await createFolder(name, 'blue');
   }
 
   if (!isSupabaseConfigured) {
@@ -79,9 +91,7 @@ export default function NotesModule() {
       <div className="h-full flex items-center justify-center text-center px-6" style={{ background: 'var(--bg)' }}>
         <div className="max-w-sm">
           <div className="text-2xl mb-3">⚠️</div>
-          <div className="text-sm font-semibold mb-2" style={{ color: 'var(--text)' }}>
-            Database not connected
-          </div>
+          <div className="text-sm font-semibold mb-2" style={{ color: 'var(--text)' }}>Database not connected</div>
           <p className="text-xs leading-relaxed" style={{ color: 'var(--text-dim)' }}>
             Add your Supabase env vars to <code>.env.local</code>, then restart the dev server.
           </p>
@@ -104,11 +114,6 @@ export default function NotesModule() {
         <div>
           <div className="text-red-400 text-sm mb-2">Couldn&apos;t load notes</div>
           <div className="text-xs font-mono" style={{ color: 'var(--text-faint)' }}>{error}</div>
-          {error.includes('relation') && (
-            <p className="text-xs mt-3 max-w-xs" style={{ color: 'var(--text-faint)' }}>
-              This usually means the &quot;notes&quot; table hasn&apos;t been created in Supabase yet.
-            </p>
-          )}
         </div>
       </div>
     );
@@ -116,6 +121,58 @@ export default function NotesModule() {
 
   return (
     <div className="h-full flex" style={{ background: 'var(--bg)' }}>
+      <div
+        className="w-[150px] shrink-0 border-r p-3 overflow-y-auto hidden lg:block"
+        style={{ borderColor: 'var(--border)' }}
+      >
+        <div className="text-[10px] uppercase tracking-wider font-mono mb-2 px-1" style={{ color: 'var(--text-faint)' }}>
+          Folders
+        </div>
+        <button
+          onClick={() => setActiveFolder('all')}
+          className="w-full text-left px-2 py-1.5 rounded-md text-[13px] mb-0.5"
+          style={activeFolder === 'all' ? { background: 'var(--surface)', color: 'var(--text)' } : { color: 'var(--text-dim)' }}
+        >
+          All notes
+        </button>
+        <button
+          onClick={() => setActiveFolder(null)}
+          className="w-full text-left px-2 py-1.5 rounded-md text-[13px] mb-2"
+          style={activeFolder === null ? { background: 'var(--surface)', color: 'var(--text)' } : { color: 'var(--text-dim)' }}
+        >
+          Unfiled
+        </button>
+        {folders.map((f) => (
+          <div key={f.id} className="group relative">
+            <button
+              onClick={() => setActiveFolder(f.id)}
+              className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-[13px] mb-0.5 pr-6"
+              style={activeFolder === f.id ? { background: 'var(--surface)', color: 'var(--text)' } : { color: 'var(--text-dim)' }}
+            >
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ background: colorHex(f.color) || 'var(--text-faint)' }}
+              />
+              <span className="truncate">{f.name}</span>
+            </button>
+            <button
+              onClick={() => deleteFolder(f.id)}
+              className="absolute top-1.5 right-1.5 w-4 h-4 rounded opacity-0 group-hover:opacity-100 text-[10px]"
+              style={{ color: 'var(--text-faint)' }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <button
+          onClick={handleNewFolder}
+          className="w-full text-left px-2 py-1.5 rounded-md text-[13px] mt-1"
+          style={{ color: 'var(--text-faint)' }}
+        >
+          + New folder
+        </button>
+      </div>
+
       <div
         className="w-[230px] shrink-0 border-r flex flex-col hidden md:flex"
         style={{ borderColor: 'var(--border)' }}
@@ -130,43 +187,42 @@ export default function NotesModule() {
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-2">
-          {notes.length === 0 && (
+          {visibleNotes.length === 0 && (
             <div className="text-xs text-center py-10 px-3" style={{ color: 'var(--text-faint)' }}>
-              No notes yet. Create your first one above.
+              No notes here yet.
             </div>
           )}
-          {notes.map((n) => (
-            <div
-              key={n.id}
-              onClick={() => setSelectedId(n.id)}
-              className="group relative rounded-lg px-3 py-2.5 cursor-pointer mb-1"
-              style={
-                selectedId === n.id
-                  ? { background: 'var(--surface)' }
-                  : { background: 'transparent' }
-              }
-            >
+          {visibleNotes.map((n) => {
+            const hex = colorHex(n.color);
+            return (
               <div
-                className="text-sm font-medium truncate pr-5"
-                style={{ color: 'var(--text)' }}
+                key={n.id}
+                onClick={() => setSelectedId(n.id)}
+                className="group relative rounded-lg pl-3.5 pr-3 py-2.5 cursor-pointer mb-1 overflow-hidden"
+                style={selectedId === n.id ? { background: 'var(--surface)' } : { background: 'transparent' }}
               >
-                {n.title || 'Untitled'}
+                {hex && (
+                  <span
+                    className="absolute left-0 top-2 bottom-2 w-[3px] rounded"
+                    style={{ background: hex }}
+                  />
+                )}
+                <div className="text-sm font-medium truncate pr-5" style={{ color: 'var(--text)' }}>
+                  {n.title || 'Untitled'}
+                </div>
+                <div className="text-[11px] font-mono mt-0.5" style={{ color: 'var(--text-faint)' }}>
+                  {timeAgo(n.updated_at)}
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDelete(n.id); }}
+                  className="absolute top-2 right-2 w-5 h-5 rounded opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs"
+                  style={{ color: 'var(--text-faint)' }}
+                >
+                  ✕
+                </button>
               </div>
-              <div className="text-[11px] font-mono mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                {timeAgo(n.updated_at)}
-              </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDelete(n.id);
-                }}
-                className="absolute top-2 right-2 w-5 h-5 rounded opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs"
-                style={{ color: 'var(--text-faint)' }}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -189,13 +245,46 @@ export default function NotesModule() {
           </div>
         ) : (
           <>
-            <input
-              value={selected.title}
-              onChange={(e) => updateNote(selected.id, { title: e.target.value })}
-              placeholder="Untitled"
-              className="text-xl font-semibold px-6 pt-6 pb-2 outline-none bg-transparent"
-              style={{ color: 'var(--text)' }}
-            />
+            <div className="flex items-start gap-3 px-6 pt-6 pb-1">
+              <input
+                value={selected.title}
+                onChange={(e) => updateNote(selected.id, { title: e.target.value })}
+                placeholder="Untitled"
+                className="flex-1 text-xl font-semibold outline-none bg-transparent"
+                style={{ color: 'var(--text)' }}
+              />
+              <div className="flex items-center gap-1.5 pt-2">
+                {NOTE_COLORS.map((c) => (
+                  <button
+                    key={c.id}
+                    title={c.label}
+                    onClick={() => updateNote(selected.id, { color: selected.color === c.id ? null : c.id })}
+                    className="w-4 h-4 rounded-full border-2"
+                    style={{
+                      background: c.hex,
+                      borderColor: selected.color === c.id ? 'var(--text)' : 'transparent',
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+            {folders.length > 0 && (
+              <div className="px-6 pb-3">
+                <select
+                  value={selected.folder_id || ''}
+                  onChange={(e) => updateNote(selected.id, { folder_id: e.target.value || null })}
+                  className="text-xs rounded-md border px-2 py-1 bg-transparent"
+                  style={{ borderColor: 'var(--border)', color: 'var(--text-dim)' }}
+                >
+                  <option value="">No folder</option>
+                  {folders.map((f) => (
+                    <option key={f.id} value={f.id} style={{ color: '#000' }}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <EditorToolbar editor={editor} />
             <div className="flex-1 overflow-y-auto px-6 py-4">
               <EditorContent editor={editor} className="tiptap-content" />

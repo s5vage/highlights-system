@@ -137,3 +137,9 @@ body {
   text-decoration: line-through;
   color: var(--text-faint);
 }
+
+.tiptap-content mark {
+  border-radius: 3px;
+  padding: 0 1px;
+  color: #16160f;
+}

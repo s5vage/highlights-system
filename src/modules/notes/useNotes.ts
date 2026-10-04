@@ -38,10 +38,10 @@ export function useNotes() {
     };
   }, [load]);
 
-  const createNote = useCallback(async (): Promise<Note | null> => {
+  const createNote = useCallback(async (folderId: string | null = null): Promise<Note | null> => {
     const { data, error } = await supabase
       .from('notes')
-      .insert({ title: 'Untitled', content: null, tags: [] })
+      .insert({ title: 'Untitled', content: null, tags: [], folder_id: folderId })
       .select()
       .single();
 
@@ -56,7 +56,7 @@ export function useNotes() {
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const updateNote = useCallback(
-    (id: string, patch: Partial<Pick<Note, 'title' | 'content' | 'tags'>>) => {
+    (id: string, patch: Partial<Pick<Note, 'title' | 'content' | 'tags' | 'color' | 'folder_id'>>) => {
       setNotes((prev) =>
         prev.map((n) => (n.id === id ? { ...n, ...patch, updated_at: new Date().toISOString() } : n))
       );

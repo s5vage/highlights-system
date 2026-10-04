@@ -1,4 +1,5 @@
 import { Editor } from '@tiptap/react';
+import { HIGHLIGHT_MARKER_COLORS, FONT_OPTIONS } from './helpers';
 
 interface Props {
   editor: Editor | null;
@@ -102,13 +103,64 @@ export default function EditorToolbar({ editor }: Props) {
       >
         &ldquo;
       </ToolBtn>
-      <ToolBtn
+            <ToolBtn
         title="Code block"
         active={editor.isActive('codeBlock')}
         onClick={() => editor.chain().focus().toggleCodeBlock().run()}
       >
         {'</>'}
       </ToolBtn>
+
+      <div className="w-px h-5 mx-1" style={{ background: 'var(--border)' }} />
+
+      <div className="flex items-center gap-1">
+        {HIGHLIGHT_MARKER_COLORS.map((c) => {
+          const active = editor.isActive('highlight', { color: c.hex });
+          return (
+            <button
+              key={c.id}
+              type="button"
+              title={`Highlight ${c.id}`}
+              onClick={() =>
+                active
+                  ? editor.chain().focus().unsetHighlight().run()
+                  : editor.chain().focus().toggleHighlight({ color: c.hex }).run()
+              }
+              className="w-6 h-6 rounded-full border-2"
+              style={{
+                background: c.hex,
+                borderColor: active ? 'var(--text)' : 'transparent',
+              }}
+            />
+          );
+        })}
+        <ToolBtn
+          title="Remove highlight"
+          onClick={() => editor.chain().focus().unsetHighlight().run()}
+        >
+          ⊘
+        </ToolBtn>
+      </div>
+
+      <div className="w-px h-5 mx-1" style={{ background: 'var(--border)' }} />
+
+      <select
+        title="Font"
+        onChange={(e) => {
+          const val = e.target.value;
+          if (val) editor.chain().focus().setFontFamily(val).run();
+          else editor.chain().focus().unsetFontFamily().run();
+        }}
+        className="h-8 rounded-md border text-xs px-2 bg-transparent"
+        style={{ borderColor: 'var(--border)', color: 'var(--text-dim)' }}
+        defaultValue=""
+      >
+        {FONT_OPTIONS.map((f) => (
+          <option key={f.label} value={f.value} style={{ color: '#000' }}>
+            {f.label}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
