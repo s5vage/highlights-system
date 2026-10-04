@@ -7,6 +7,7 @@ interface Props {
   activeTabId: string;
   onSelect: (tabId: string) => void;
   onClose: (tabId: string) => void;
+  onOpenSearch: () => void;
 }
 
 function iconFor(tab: OpenTab) {
@@ -14,7 +15,7 @@ function iconFor(tab: OpenTab) {
   return MODULES.find((m) => m.id === tab.moduleId)?.icon ?? '•';
 }
 
-export default function TabBar({ tabs, activeTabId, onSelect, onClose }: Props) {
+export default function TabBar({ tabs, activeTabId, onSelect, onClose, onOpenSearch }: Props) {
   const { theme, toggleTheme } = useTheme();
 
   return (
@@ -53,6 +54,13 @@ export default function TabBar({ tabs, activeTabId, onSelect, onClose }: Props) 
         })}
       </div>
 
+      <button
+        onClick={onOpenSearch}
+        title="Search (⌘K)"
+        className="shrink-0 w-10 flex items-center justify-center text-[var(--text-dim)] hover:text-[var(--text)] border-l border-[var(--border)]"
+      >
+        🔍
+      </button>
       <button
         onClick={toggleTheme}
         title="Toggle theme"

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import TabBar from '@/components/TabBar';
 import DashboardHome from '@/components/DashboardHome';
+import GlobalSearch from '@/components/GlobalSearch';
 import PlaceholderModule from '@/modules/PlaceholderModule';
 import HighlightsModule from '@/modules/highlights/HighlightsModule';
 import NotesModule from '@/modules/notes/NotesModule';
@@ -16,25 +17,33 @@ const HOME_TAB: OpenTab = {
   closable: false,
 };
 
+interface PendingSelection {
+  module: ModuleId;
+  id: string;
+}
+
 export default function Page() {
   const [tabs, setTabs] = useState<OpenTab[]>([HOME_TAB]);
   const [activeTabId, setActiveTabId] = useState('home');
+  const [showSearch, setShowSearch] = useState(false);
+  const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
 
-  function openModule(id: ModuleId) {
+  function openModule(id: ModuleId, focusId?: string) {
     const existing = tabs.find((t) => t.moduleId === id);
     if (existing) {
       setActiveTabId(existing.tabId);
-      return;
+    } else {
+      const mod = MODULES.find((m) => m.id === id)!;
+      const newTab: OpenTab = {
+        tabId: `${id}-${Date.now()}`,
+        moduleId: id,
+        title: mod.label,
+        closable: true,
+      };
+      setTabs((prev) => [...prev, newTab]);
+      setActiveTabId(newTab.tabId);
     }
-    const mod = MODULES.find((m) => m.id === id)!;
-    const newTab: OpenTab = {
-      tabId: `${id}-${Date.now()}`,
-      moduleId: id,
-      title: mod.label,
-      closable: true,
-    };
-    setTabs((prev) => [...prev, newTab]);
-    setActiveTabId(newTab.tabId);
+    if (focusId) setPendingSelection({ module: id, id: focusId });
   }
 
   function closeTab(tabId: string) {
@@ -47,24 +56,46 @@ export default function Page() {
     });
   }
 
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setShowSearch(true);
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   const activeTab = tabs.find((t) => t.tabId === activeTabId) ?? HOME_TAB;
 
   return (
-        <div className="h-dvh flex flex-col" style={{ background: 'var(--bg)' }}>
+    <div className="h-dvh flex flex-col" style={{ background: 'var(--bg)' }}>
       <TabBar
         tabs={tabs}
         activeTabId={activeTabId}
         onSelect={setActiveTabId}
         onClose={closeTab}
+        onOpenSearch={() => setShowSearch(true)}
       />
 
       <div className="flex-1 min-h-0">
         {activeTab.moduleId === 'home' && (
           <DashboardHome onOpenModule={openModule} />
         )}
-                {activeTab.moduleId === 'highlights' && <HighlightsModule />}
 
-        {activeTab.moduleId === 'notes' && <NotesModule />}
+        {activeTab.moduleId === 'highlights' && (
+          <HighlightsModule
+            pendingId={pendingSelection?.module === 'highlights' ? pendingSelection.id : null}
+            onConsumedPending={() => setPendingSelection(null)}
+          />
+        )}
+        {activeTab.moduleId === 'notes' && (
+          <NotesModule
+            pendingId={pendingSelection?.module === 'notes' ? pendingSelection.id : null}
+            onConsumedPending={() => setPendingSelection(null)}
+          />
+        )}
         {activeTab.moduleId === 'canvas' && (
           <PlaceholderModule
             title="Canvas"
@@ -94,6 +125,10 @@ export default function Page() {
           />
         )}
       </div>
+
+      {showSearch && (
+        <GlobalSearch onClose={() => setShowSearch(false)} onOpenModule={openModule} />
+      )}
     </div>
   );
 }

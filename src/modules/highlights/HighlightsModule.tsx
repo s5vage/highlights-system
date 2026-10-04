@@ -12,7 +12,12 @@ type SortMode = 'new' | 'old' | 'len';
 
 const PIN_STORAGE_KEY = 'hl_pinned_ids';
 
-export default function HighlightsModule() {
+interface Props {
+  pendingId?: string | null;
+  onConsumedPending?: () => void;
+}
+
+export default function HighlightsModule({ pendingId, onConsumedPending }: Props = {}) {
   const { highlights, loading, error, deleteHighlight } = useHighlights();
 
   const [search, setSearch] = useState('');
@@ -69,6 +74,15 @@ export default function HighlightsModule() {
     items.sort((a, b) => (pinnedIds.includes(b.id) ? 1 : 0) - (pinnedIds.includes(a.id) ? 1 : 0));
     return items;
   }, [highlights, showPinnedOnly, activeTag, search, sortMode, pinnedIds]);
+
+  useEffect(() => {
+    if (!pendingId) return;
+    const match = highlights.find((h) => h.id === pendingId);
+    if (match) {
+      setSelected(match);
+      onConsumedPending?.();
+    }
+  }, [pendingId, highlights, onConsumedPending]);
 
   const weekCount = useMemo(
     () => highlights.filter((h) => Date.now() - new Date(h.created_at).getTime() < 604800000).length,

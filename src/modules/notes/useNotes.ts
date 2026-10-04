@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Note } from '@/lib/types';
+import { extractPlainText } from './helpers';
 
 export function useNotes() {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -63,10 +64,11 @@ export function useNotes() {
 
       if (saveTimers.current[id]) clearTimeout(saveTimers.current[id]);
       saveTimers.current[id] = setTimeout(async () => {
-        await supabase
-          .from('notes')
-          .update({ ...patch, updated_at: new Date().toISOString() })
-          .eq('id', id);
+        const dbPatch: Record<string, unknown> = { ...patch, updated_at: new Date().toISOString() };
+        if ('content' in patch) {
+          dbPatch.search_text = extractPlainText(patch.content);
+        }
+        await supabase.from('notes').update(dbPatch).eq('id', id);
       }, 600);
     },
     []

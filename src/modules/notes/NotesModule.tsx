@@ -12,10 +12,23 @@ import FontFamily from '@tiptap/extension-font-family';
 import { useNotes } from './useNotes';
 import { useFolders } from './useFolders';
 import EditorToolbar from './EditorToolbar';
-import { NOTE_COLORS, colorHex, timeAgo, toDateStr, formatJournalDate } from './helpers';
+import { WikiLink } from './WikiLinkMark';
+import {
+  NOTE_COLORS,
+  colorHex,
+  timeAgo,
+  toDateStr,
+  formatJournalDate,
+  extractWikiLinkTitles,
+} from './helpers';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
-export default function NotesModule() {
+interface Props {
+  pendingId?: string | null;
+  onConsumedPending?: () => void;
+}
+
+export default function NotesModule({ pendingId, onConsumedPending }: Props = {}) {
   const { notes, loading, error, createNote, updateNote, deleteNote, getOrCreateJournalEntry } = useNotes();
   const { folders, createFolder, deleteFolder } = useFolders();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -28,6 +41,39 @@ export default function NotesModule() {
     .sort((a, b) => (b.journal_date || '').localeCompare(a.journal_date || ''));
 
   const selected = notes.find((n) => n.id === selectedId) || null;
+
+  const backlinks = selected
+    ? notes.filter(
+        (n) =>
+          n.id !== selected.id &&
+          extractWikiLinkTitles(n.content).some(
+            (t) => t.trim().toLowerCase() === selected.title.trim().toLowerCase()
+          )
+      )
+    : [];
+
+  function navigateToTitle(title: string) {
+    const match = notes.find((n) => n.title.toLowerCase() === title.toLowerCase());
+    if (match) {
+      setJournalMode(false);
+      setSelectedId(match.id);
+    } else if (confirm(`No note titled "${title}" yet. Create it?`)) {
+      createNote().then((note) => {
+        if (note) {
+          updateNote(note.id, { title });
+          setJournalMode(false);
+          setSelectedId(note.id);
+        }
+      });
+    }
+  }
+
+  function handleEditorClick(e: React.MouseEvent) {
+    const target = (e.target as HTMLElement).closest('[data-wiki-link]');
+    if (!target) return;
+    e.preventDefault();
+    navigateToTitle(target.textContent || '');
+  }
 
   const visibleNotes =
     activeFolder === 'all'
@@ -45,6 +91,7 @@ export default function NotesModule() {
       TextStyle,
       FontFamily,
       Highlight.configure({ multicolor: true }),
+      WikiLink,
     ],
     content: '',
     immediatelyRender: false,
@@ -70,6 +117,17 @@ export default function NotesModule() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, editor]);
+
+    useEffect(() => {
+    if (!pendingId) return;
+    const match = notes.find((n) => n.id === pendingId);
+    if (match) {
+      setJournalMode(false);
+      setActiveFolder('all');
+      setSelectedId(match.id);
+      onConsumedPending?.();
+    }
+  }, [pendingId, notes, onConsumedPending]);
 
   async function handleCreate() {
     const folderId = activeFolder === 'all' || activeFolder === null ? null : activeFolder;
@@ -397,9 +455,35 @@ export default function NotesModule() {
                 </select>
               </div>
             )}
-            <EditorToolbar editor={editor} />
-            <div className="flex-1 overflow-y-auto px-6 py-4">
+                        <EditorToolbar editor={editor} />
+            <div className="flex-1 overflow-y-auto px-6 py-4" onClick={handleEditorClick}>
               <EditorContent editor={editor} className="tiptap-content" />
+
+              {backlinks.length > 0 && (
+                <div className="mt-8 pt-5 border-t" style={{ borderColor: 'var(--border)' }}>
+                  <div
+                    className="text-[10px] uppercase tracking-wider font-mono mb-2"
+                    style={{ color: 'var(--text-faint)' }}
+                  >
+                    Linked from
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {backlinks.map((n) => (
+                      <button
+                        key={n.id}
+                        onClick={() => {
+                          setJournalMode(false);
+                          setSelectedId(n.id);
+                        }}
+                        className="text-left text-sm rounded-md px-2.5 py-1.5"
+                        style={{ color: 'var(--text-dim)' }}
+                      >
+                        {n.title || 'Untitled'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </>
         )}
