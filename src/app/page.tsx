@@ -7,6 +7,7 @@ import GlobalSearch from '@/components/GlobalSearch';
 import PlaceholderModule from '@/modules/PlaceholderModule';
 import HighlightsModule from '@/modules/highlights/HighlightsModule';
 import NotesModule from '@/modules/notes/NotesModule';
+import GraphModule from '@/modules/graph/GraphModule';
 import { MODULES } from '@/lib/modules';
 import { ModuleId, OpenTab } from '@/lib/types';
 
@@ -103,13 +104,7 @@ export default function Page() {
             note="Infinite whiteboard (tldraw) goes here — mouse-ready now, Pencil-ready once the iPad arrives."
           />
         )}
-        {activeTab.moduleId === 'graph' && (
-          <PlaceholderModule
-            title="Graph"
-            icon="🕸️"
-            note="Visual map of how your notes and highlights connect — built after notes and linking exist."
-          />
-        )}
+        {activeTab.moduleId === 'graph' && <GraphModule onOpenModule={openModule} />}
         {activeTab.moduleId === 'settings' && (
           <PlaceholderModule
             title="Settings"
