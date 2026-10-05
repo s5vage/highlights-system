@@ -41,6 +41,34 @@ export function formatJournalDate(dateStr: string): string {
   });
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function extractPlainText(node: any): string {
+  if (!node) return '';
+  if (typeof node.text === 'string') return node.text;
+  if (Array.isArray(node.content)) {
+    return node.content.map(extractPlainText).join(' ');
+  }
+  return '';
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function extractWikiLinkTitles(node: any, acc: string[] = []): string[] {
+  if (!node) return acc;
+  if (
+    typeof node.text === 'string' &&
+    Array.isArray(node.marks) &&
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    node.marks.some((m: any) => m.type === 'wikiLink')
+  ) {
+    acc.push(node.text);
+  }
+  if (Array.isArray(node.content)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    node.content.forEach((child: any) => extractWikiLinkTitles(child, acc));
+  }
+  return acc;
+}
+
 export function timeAgo(ts: string): string {
   if (!ts) return '';
   const diff = Date.now() - new Date(ts).getTime();
