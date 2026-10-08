@@ -9,8 +9,8 @@ export function useHighlights() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (showSpinner = false) => {
+    if (showSpinner) setLoading(true);
     const { data, error } = await supabase
       .from('highlights')
       .select('*')

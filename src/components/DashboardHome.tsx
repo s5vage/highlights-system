@@ -1,3 +1,6 @@
+'use client';
+
+import { motion } from 'motion/react';
 import { MODULES } from '@/lib/modules';
 import { ModuleId } from '@/lib/types';
 
@@ -7,37 +10,37 @@ interface Props {
 
 export default function DashboardHome({ onOpenModule }: Props) {
   return (
-    <div className="h-full overflow-y-auto p-8 bg-[var(--bg)]">
-      <div className="max-w-5xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-2xl font-semibold text-[var(--text)] mb-1">
-            Welcome back
-          </h1>
-          <p className="text-sm text-[var(--text-dim)]">
-            Pick a module to open it in a new tab.
-          </p>
-        </div>
+    <div className="h-full overflow-y-auto" style={{ background: 'var(--bg)' }}>
+      <div className="mx-auto max-w-5xl px-6 pb-16 pt-12 md:px-8 md:pt-16">
+        <h1 className="text-[32px] font-semibold leading-tight tracking-[-0.022em]">Welcome back</h1>
+        <p className="mt-1.5 text-[15px]" style={{ color: 'var(--text-dim)' }}>
+          Open a space to get started. Each one opens in its own tab.
+        </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {MODULES.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => onOpenModule(m.id)}
-              className="group text-left bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 hover:border-[var(--border-light)] hover:-translate-y-0.5 transition-all"
-            >
-              <div
-                className={`w-9 h-9 rounded-lg ${m.accent} bg-opacity-15 flex items-center justify-center text-lg mb-3`}
+        <div className="mt-9 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {MODULES.map((m) => {
+            const Icon = m.icon;
+            return (
+              <motion.button
+                key={m.id}
+                type="button"
+                whileTap={{ scale: 0.98 }}
+                onClick={() => onOpenModule(m.id)}
+                className="tile"
+                style={{ '--hue': `var(--hue-${m.hue})` } as React.CSSProperties}
               >
-                {m.icon}
-              </div>
-              <div className="text-sm font-semibold text-[var(--text)] mb-1">
-                {m.label}
-              </div>
-              <div className="text-xs text-[var(--text-dim)] leading-relaxed">
-                {m.description}
-              </div>
-            </button>
-          ))}
+                <span className="tile-badge">
+                  <Icon size={22} strokeWidth={1.8} />
+                </span>
+                <span>
+                  <span className="block text-[16px] font-semibold tracking-[-0.012em]">{m.label}</span>
+                  <span className="mt-1 block text-[13.5px] leading-snug" style={{ color: 'var(--text-dim)' }}>
+                    {m.description}
+                  </span>
+                </span>
+              </motion.button>
+            );
+          })}
         </div>
       </div>
     </div>

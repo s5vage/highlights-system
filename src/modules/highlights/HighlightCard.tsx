@@ -1,44 +1,65 @@
+'use client';
+
+import { useMemo } from 'react';
+import { motion } from 'motion/react';
+import { Pin } from 'lucide-react';
 import { Highlight } from '@/lib/types';
-import { COLOR_HEX, readingTime, timeAgo, escapeHtml } from './helpers';
+import { cleanHtml, escapeHtml, hueOf, readingTime, timeAgo } from './helpers';
 
 interface Props {
   highlight: Highlight;
   pinned: boolean;
+  index: number;
+  animateIn: boolean;
   onClick: () => void;
 }
 
-export default function HighlightCard({ highlight, pinned, onClick }: Props) {
-  const color = COLOR_HEX[highlight.color] || COLOR_HEX.yellow;
+export default function HighlightCard({ highlight, pinned, index, animateIn, onClick }: Props) {
+  const html = useMemo(
+    () => cleanHtml(highlight.html || escapeHtml(highlight.text)),
+    [highlight.html, highlight.text]
+  );
+  const tags = highlight.tags || [];
 
   return (
-    <div
+    <motion.article
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className="relative bg-[var(--surface)] border border-[var(--border)] rounded-xl pl-5 pr-4 py-4 cursor-pointer hover:border-[var(--border-light)] hover:-translate-y-0.5 transition-all"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      initial={animateIn ? { opacity: 0, y: 10 } : false}
+      animate={{ opacity: 1, y: 0 }}
+      whileTap={{ scale: 0.985 }}
+      transition={{
+        duration: 0.35,
+        delay: animateIn ? Math.min(index, 14) * 0.03 : 0,
+        ease: [0.22, 1, 0.36, 1],
+      }}
+      className="hl-card"
+      style={{ '--hue': `var(--hue-${hueOf(highlight.color)})` } as React.CSSProperties}
     >
-      <div
-        className="absolute left-0 top-3 bottom-3 w-[3px] rounded"
-        style={{ background: color }}
-      />
-      {pinned && (
-        <div className="absolute top-3 right-4 text-[9px] tracking-wide text-[var(--text-faint)] font-mono">
-          PINNED
+      <div className="hl-card-body hl-content" dangerouslySetInnerHTML={{ __html: html }} />
+
+      <div className="hl-card-foot">
+        <div className="flex min-w-0 flex-wrap gap-1.5">
+          {tags.slice(0, 3).map((t) => (
+            <span key={t} className="chip">
+              {t}
+            </span>
+          ))}
+          {tags.length > 3 && <span className="chip">+{tags.length - 3}</span>}
         </div>
-      )}
-      <div
-        className="hl-content text-sm text-[var(--text)] leading-relaxed max-h-28 overflow-hidden mb-3"
-        dangerouslySetInnerHTML={{ __html: highlight.html || escapeHtml(highlight.text) }}
-      />
-      <div className="flex items-center flex-wrap gap-2 pt-3 border-t border-[var(--border)]">
-        {(highlight.tags || []).map((t) => (
-          <span key={t} className="text-[11px] font-mono text-[var(--text-dim)]">
-            #{t}
-          </span>
-        ))}
-        <div className="ml-auto flex gap-2 text-[11px] font-mono text-[var(--text-faint)]">
+        <div className="hl-meta">
+          {pinned && <Pin size={12} strokeWidth={2} fill="currentColor" aria-label="Pinned" />}
           <span>{readingTime(highlight.text)}</span>
           <span>{timeAgo(highlight.created_at)}</span>
         </div>
       </div>
-    </div>
+    </motion.article>
   );
 }

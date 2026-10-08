@@ -1,14 +1,35 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, LayoutGroup, MotionConfig, motion } from 'motion/react';
+import {
+  DatabaseZap,
+  Download,
+  Hash,
+  Highlighter,
+  Library,
+  Pin,
+  Search,
+  SearchX,
+  TriangleAlert,
+  X,
+} from 'lucide-react';
 import { useHighlights } from './useHighlights';
 import HighlightCard from './HighlightCard';
 import HighlightModal from './HighlightModal';
+import SegmentedControl from '@/components/SegmentedControl';
+import Masonry from '@/components/Masonry';
 import { exportMarkdown } from './helpers';
 import { Highlight } from '@/lib/types';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 type SortMode = 'new' | 'old' | 'len';
+
+const SORT_OPTIONS: { value: SortMode; label: string }[] = [
+  { value: 'new', label: 'Newest' },
+  { value: 'old', label: 'Oldest' },
+  { value: 'len', label: 'Longest' },
+];
 
 const PIN_STORAGE_KEY = 'hl_pinned_ids';
 
@@ -17,8 +38,69 @@ interface Props {
   onConsumedPending?: () => void;
 }
 
+function SideRow({
+  active,
+  onClick,
+  icon,
+  label,
+  count,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  count: number;
+}) {
+  return (
+    <button type="button" onClick={onClick} data-active={active} className="side-row">
+      {active && (
+        <motion.span
+          layoutId="hl-side-pill"
+          className="side-pill"
+          transition={{ type: 'spring', stiffness: 520, damping: 40 }}
+        />
+      )}
+      <span className="relative flex min-w-0 items-center gap-2.5">
+        {icon}
+        <span className="truncate">{label}</span>
+      </span>
+      <span className="side-count tnum relative">{count}</span>
+    </button>
+  );
+}
+
+function StateMessage({
+  icon,
+  title,
+  body,
+  action,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="grid place-items-center px-6 py-24 text-center">
+      <div className="max-w-xs">
+        <span
+          className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl"
+          style={{ background: 'var(--fill)', color: 'var(--text-dim)' }}
+        >
+          {icon}
+        </span>
+        <div className="text-[16px] font-semibold tracking-[-0.012em]">{title}</div>
+        <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: 'var(--text-dim)' }}>
+          {body}
+        </p>
+        {action && <div className="mt-4">{action}</div>}
+      </div>
+    </div>
+  );
+}
+
 export default function HighlightsModule({ pendingId, onConsumedPending }: Props = {}) {
-  const { highlights, loading, error, deleteHighlight } = useHighlights();
+  const { highlights, loading, error, reload, deleteHighlight } = useHighlights();
 
   const [search, setSearch] = useState('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -26,6 +108,8 @@ export default function HighlightsModule({ pendingId, onConsumedPending }: Props
   const [sortMode, setSortMode] = useState<SortMode>('new');
   const [selected, setSelected] = useState<Highlight | null>(null);
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  const [intro, setIntro] = useState(true);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const raw = localStorage.getItem(PIN_STORAGE_KEY);
@@ -36,6 +120,27 @@ export default function HighlightsModule({ pendingId, onConsumedPending }: Props
         setPinnedIds([]);
       }
     }
+  }, []);
+
+  // The staggered entrance only plays once, right after the first load.
+  useEffect(() => {
+    if (loading) return;
+    const t = setTimeout(() => setIntro(false), 1200);
+    return () => clearTimeout(t);
+  }, [loading]);
+
+  // Press "/" anywhere to jump to search.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const el = document.activeElement as HTMLElement | null;
+      const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+      if (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   function togglePin(id: string) {
@@ -89,230 +194,242 @@ export default function HighlightsModule({ pendingId, onConsumedPending }: Props
     [highlights]
   );
 
+  function showAll() {
+    setActiveTag(null);
+    setShowPinnedOnly(false);
+  }
+  function showPinned() {
+    setShowPinnedOnly(true);
+    setActiveTag(null);
+  }
+  function showTag(tag: string) {
+    setActiveTag(tag);
+    setShowPinnedOnly(false);
+  }
+
   if (!isSupabaseConfigured) {
     return (
-      <div className="h-full flex items-center justify-center text-center px-6">
-        <div className="max-w-sm">
-          <div className="text-2xl mb-3">⚠️</div>
-          <div className="text-sm font-semibold text-neutral-200 mb-2">
-            Database not connected
-          </div>
-          <p className="text-xs text-neutral-500 leading-relaxed">
-            Add <code className="text-neutral-400">NEXT_PUBLIC_SUPABASE_URL</code> and{' '}
-            <code className="text-neutral-400">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> to your{' '}
-            <code className="text-neutral-400">.env.local</code> file, then restart the dev
-            server.
-          </p>
-        </div>
+      <div style={{ background: 'var(--bg)' }} className="h-full">
+        <StateMessage
+          icon={<DatabaseZap size={22} strokeWidth={1.8} />}
+          title="Database not connected"
+          body="Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to your .env.local file, then restart the dev server."
+        />
       </div>
     );
   }
 
-  if (loading) {
+  if (error && highlights.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center text-neutral-500 text-sm">
-        Loading highlights…
+      <div style={{ background: 'var(--bg)' }} className="h-full">
+        <StateMessage
+          icon={<TriangleAlert size={22} strokeWidth={1.8} />}
+          title="Couldn’t load your highlights"
+          body={error}
+          action={
+            <button type="button" className="btn btn-primary" onClick={reload}>
+              Try again
+            </button>
+          }
+        />
       </div>
     );
   }
 
-  if (error) {
-    return (
-      <div className="h-full flex items-center justify-center text-center px-6">
-        <div>
-          <div className="text-red-400 text-sm mb-2">Couldn&apos;t load highlights</div>
-          <div className="text-neutral-600 text-xs font-mono">{error}</div>
-        </div>
-      </div>
-    );
-  }
+  const filtering = !!search.trim() || !!activeTag || showPinnedOnly;
+  const summary =
+    `${highlights.length.toLocaleString()} ${highlights.length === 1 ? 'highlight' : 'highlights'} ` +
+    `across ${tagCounts.length} ${tagCounts.length === 1 ? 'tag' : 'tags'}` +
+    (weekCount > 0 ? `, ${weekCount} added this week.` : '.');
+
+  const chipStyle = (on: boolean): React.CSSProperties =>
+    on
+      ? { background: 'var(--text)', color: 'var(--bg)' }
+      : { background: 'var(--fill)', color: 'var(--text-dim)' };
 
   return (
-    <div className="h-full flex">
-      <div className="w-[190px] shrink-0 border-r border-neutral-800 p-4 overflow-y-auto hidden md:block">
-        <div className="text-[10px] uppercase tracking-wider text-neutral-600 font-mono mb-2 px-2">
-          Library
-        </div>
-        <button
-          onClick={() => {
-            setActiveTag(null);
-            setShowPinnedOnly(false);
-          }}
-          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-[13px] mb-1 ${
-            !activeTag && !showPinnedOnly
-              ? 'bg-neutral-900 text-neutral-100'
-              : 'text-neutral-500 hover:bg-neutral-900/60 hover:text-neutral-200'
-          }`}
-        >
-          <span>All highlights</span>
-          <span className="font-mono text-[11px] text-neutral-600">{highlights.length}</span>
-        </button>
-        <button
-          onClick={() => {
-            setShowPinnedOnly(true);
-            setActiveTag(null);
-          }}
-          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-[13px] mb-4 ${
-            showPinnedOnly
-              ? 'bg-neutral-900 text-neutral-100'
-              : 'text-neutral-500 hover:bg-neutral-900/60 hover:text-neutral-200'
-          }`}
-        >
-          <span>Pinned</span>
-          <span className="font-mono text-[11px] text-neutral-600">{pinnedIds.length}</span>
-        </button>
+    <MotionConfig reducedMotion="user">
+      <div className="flex h-full" style={{ background: 'var(--bg)' }}>
+        {/* Sidebar */}
+        <aside className="hl-side hidden w-[244px] shrink-0 flex-col overflow-y-auto p-3 md:flex">
+          <LayoutGroup id="hl-side">
+            <div className="side-title">Library</div>
+            <SideRow
+              active={!activeTag && !showPinnedOnly}
+              onClick={showAll}
+              icon={<Library size={15} strokeWidth={1.9} />}
+              label="All highlights"
+              count={highlights.length}
+            />
+            <SideRow
+              active={showPinnedOnly}
+              onClick={showPinned}
+              icon={<Pin size={15} strokeWidth={1.9} />}
+              label="Pinned"
+              count={pinnedIds.length}
+            />
 
-        <div className="text-[10px] uppercase tracking-wider text-neutral-600 font-mono mb-2 px-2">
-          Tags
-        </div>
-        {tagCounts.map(([tag, count]) => (
-          <button
-            key={tag}
-            onClick={() => {
-              setActiveTag(tag);
-              setShowPinnedOnly(false);
-            }}
-            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-[13px] ${
-              activeTag === tag
-                ? 'bg-neutral-900 text-neutral-100'
-                : 'text-neutral-500 hover:bg-neutral-900/60 hover:text-neutral-200'
-            }`}
-          >
-            <span className="truncate">{tag}</span>
-            <span className="font-mono text-[11px] text-neutral-600">{count}</span>
-          </button>
-        ))}
-      </div>
-
-            <div className="flex-1 min-w-0 overflow-y-auto p-5">
-        {/* Mobile tag chips — replaces the sidebar on small screens */}
-        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 mb-4 md:hidden">
-          <button
-            onClick={() => {
-              setActiveTag(null);
-              setShowPinnedOnly(false);
-            }}
-            className="whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-mono shrink-0"
-            style={
-              !activeTag && !showPinnedOnly
-                ? { background: 'var(--text)', color: 'var(--bg)', borderColor: 'var(--text)' }
-                : { borderColor: 'var(--border)', color: 'var(--text-dim)' }
-            }
-          >
-            All
-          </button>
-          <button
-            onClick={() => {
-              setShowPinnedOnly(true);
-              setActiveTag(null);
-            }}
-            className="whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-mono shrink-0"
-            style={
-              showPinnedOnly
-                ? { background: 'var(--text)', color: 'var(--bg)', borderColor: 'var(--text)' }
-                : { borderColor: 'var(--border)', color: 'var(--text-dim)' }
-            }
-          >
-            Pinned
-          </button>
-          {tagCounts.map(([tag]) => (
-            <button
-              key={tag}
-              onClick={() => {
-                setActiveTag(tag);
-                setShowPinnedOnly(false);
-              }}
-              className="whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-mono shrink-0"
-              style={
-                activeTag === tag
-                  ? { background: 'var(--text)', color: 'var(--bg)', borderColor: 'var(--text)' }
-                  : { borderColor: 'var(--border)', color: 'var(--text-dim)' }
-              }
-            >
-              #{tag}
-            </button>
-          ))}
-        </div>
-
-        
-        <div className="flex gap-0 border border-neutral-800 rounded-lg overflow-hidden max-w-md mb-5">
-          <div className="flex-1 px-4 py-3 border-r border-neutral-800">
-            <div className="font-mono text-lg">{highlights.length}</div>
-            <div className="text-[10px] uppercase text-neutral-600 mt-1">Total</div>
-          </div>
-          <div className="flex-1 px-4 py-3 border-r border-neutral-800">
-            <div className="font-mono text-lg">{tagCounts.length}</div>
-            <div className="text-[10px] uppercase text-neutral-600 mt-1">Tags</div>
-          </div>
-          <div className="flex-1 px-4 py-3">
-            <div className="font-mono text-lg">{weekCount}</div>
-            <div className="text-[10px] uppercase text-neutral-600 mt-1">This week</div>
-          </div>
-        </div>
-
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search highlights or tags"
-          className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-lg text-sm text-neutral-200 placeholder-neutral-600 px-3.5 py-2.5 outline-none focus:border-neutral-600 mb-4"
-        />
-
-        <div className="flex items-center gap-2 mb-4 text-xs font-mono">
-          <span className="text-neutral-600">Sort:</span>
-          {(['new', 'old', 'len'] as SortMode[]).map((mode) => (
-            <button
-              key={mode}
-              onClick={() => setSortMode(mode)}
-              className={`px-2 py-1 rounded ${
-                sortMode === mode ? 'bg-neutral-900 text-neutral-100' : 'text-neutral-500 hover:text-neutral-200'
-              }`}
-            >
-              {mode === 'new' ? 'Newest' : mode === 'old' ? 'Oldest' : 'Longest'}
-            </button>
-          ))}
-          <button
-            onClick={() => exportMarkdown(filtered)}
-            className="ml-auto border border-neutral-800 text-neutral-500 hover:text-neutral-200 px-2.5 py-1 rounded"
-          >
-            Export .md
-          </button>
-        </div>
-
-        {filtered.length === 0 ? (
-          <div className="text-center py-20 text-neutral-600">
-            <div className="text-2xl mb-3">{highlights.length ? '∅' : '✦'}</div>
-            <div className="text-sm font-semibold text-neutral-400 mb-1">
-              {highlights.length ? 'Nothing found' : 'No highlights yet'}
-            </div>
-            <p className="text-xs max-w-xs mx-auto">
-              {highlights.length
-                ? 'Try a different tag or search.'
-                : 'Select text anywhere on the web with the extension to save your first highlight.'}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            {filtered.map((h) => (
-              <HighlightCard
-                key={h.id}
-                highlight={h}
-                pinned={pinnedIds.includes(h.id)}
-                onClick={() => setSelected(h)}
+            {tagCounts.length > 0 && <div className="side-title">Tags</div>}
+            {tagCounts.map(([tag, count]) => (
+              <SideRow
+                key={tag}
+                active={activeTag === tag}
+                onClick={() => showTag(tag)}
+                icon={<Hash size={15} strokeWidth={1.9} />}
+                label={tag}
+                count={count}
               />
             ))}
-          </div>
-        )}
-      </div>
+          </LayoutGroup>
+        </aside>
 
-      {selected && (
-        <HighlightModal
-          highlight={selected}
-          pinned={pinnedIds.includes(selected.id)}
-          onClose={() => setSelected(null)}
-          onTogglePin={() => togglePin(selected.id)}
-          onDelete={() => deleteHighlight(selected.id)}
-        />
-      )}
-    </div>
+        {/* Main */}
+        <main className="min-w-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-[1760px]">
+            <div className="flex items-end justify-between gap-4 px-5 pb-5 pt-8 md:px-8 md:pt-10">
+              <div className="min-w-0">
+                <h1 className="text-[30px] font-semibold leading-9 tracking-[-0.022em]">Highlights</h1>
+                {!loading && (
+                  <p className="mt-1 text-[14.5px]" style={{ color: 'var(--text-dim)' }}>
+                    {summary}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                className="btn shrink-0"
+                onClick={() => exportMarkdown(filtered)}
+                title="Export the current view as Markdown"
+                disabled={loading || filtered.length === 0}
+              >
+                <Download size={15} strokeWidth={2} />
+                Export
+              </button>
+            </div>
+          </div>
+
+          {/* Sticky toolbar */}
+          <div className="hl-bar sticky top-0 z-10">
+            <div className="mx-auto flex max-w-[1760px] flex-wrap items-center gap-3 px-5 py-3 md:px-8">
+              <div className="search min-w-[220px] max-w-[460px] flex-1" onClick={() => searchRef.current?.focus()}>
+                <Search size={16} strokeWidth={2} style={{ color: 'var(--text-faint)' }} />
+                <input
+                  ref={searchRef}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search highlights and tags"
+                  aria-label="Search highlights"
+                />
+                {search ? (
+                  <button
+                    type="button"
+                    aria-label="Clear search"
+                    onClick={() => setSearch('')}
+                    className="grid h-5 w-5 place-items-center rounded-full"
+                    style={{ background: 'var(--fill-strong)', color: 'var(--text-dim)' }}
+                  >
+                    <X size={12} strokeWidth={2.4} />
+                  </button>
+                ) : (
+                  <span className="kbd hidden md:inline">/</span>
+                )}
+              </div>
+              <div className="w-full md:ml-auto md:w-auto">
+                <SegmentedControl label="Sort highlights" options={SORT_OPTIONS} value={sortMode} onChange={setSortMode} />
+              </div>
+            </div>
+
+            {/* Phones: tags move from the sidebar into a scrolling row */}
+            <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-3 md:hidden">
+              <button type="button" className="chip !px-3.5 !py-1.5 !text-[13px] shrink-0" style={chipStyle(!activeTag && !showPinnedOnly)} onClick={showAll}>
+                All
+              </button>
+              <button type="button" className="chip !px-3.5 !py-1.5 !text-[13px] shrink-0" style={chipStyle(showPinnedOnly)} onClick={showPinned}>
+                Pinned
+              </button>
+              {tagCounts.map(([tag]) => (
+                <button
+                  key={tag}
+                  type="button"
+                  className="chip !px-3.5 !py-1.5 !text-[13px] shrink-0"
+                  style={chipStyle(activeTag === tag)}
+                  onClick={() => showTag(tag)}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mx-auto max-w-[1760px] px-5 pb-24 pt-5 md:px-8">
+            {loading ? (
+              <div className="hl-grid" aria-busy="true" aria-label="Loading highlights">
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <div key={i} className="skeleton" style={{ height: 150 + (i % 3) * 22 }} />
+                ))}
+              </div>
+            ) : filtered.length === 0 ? (
+              <StateMessage
+                icon={filtering ? <SearchX size={22} strokeWidth={1.8} /> : <Highlighter size={22} strokeWidth={1.8} />}
+                title={filtering ? 'No highlights match' : 'No highlights yet'}
+                body={
+                  filtering
+                    ? 'Try a different word, or clear the filter to see everything.'
+                    : 'Select text on any web page with the extension and it will show up here.'
+                }
+                action={
+                  filtering ? (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        setSearch('');
+                        showAll();
+                      }}
+                    >
+                      Clear filters
+                    </button>
+                  ) : undefined
+                }
+              />
+            ) : (
+              <>
+                {filtering && (
+                  <p className="mb-3 text-[13px] tnum" style={{ color: 'var(--text-faint)' }}>
+                    {filtered.length} {filtered.length === 1 ? 'result' : 'results'}
+                    {activeTag ? ` in ${activeTag}` : ''}
+                  </p>
+                )}
+                <Masonry>
+                  {filtered.map((h, i) => (
+                    <HighlightCard
+                      key={h.id}
+                      highlight={h}
+                      pinned={pinnedIds.includes(h.id)}
+                      index={i}
+                      animateIn={intro}
+                      onClick={() => setSelected(h)}
+                    />
+                  ))}
+                </Masonry>
+              </>
+            )}
+          </div>
+        </main>
+
+        <AnimatePresence>
+          {selected && (
+            <HighlightModal
+              key={selected.id}
+              highlight={selected}
+              pinned={pinnedIds.includes(selected.id)}
+              onClose={() => setSelected(null)}
+              onTogglePin={() => togglePin(selected.id)}
+              onDelete={() => deleteHighlight(selected.id)}
+            />
+          )}
+        </AnimatePresence>
+      </div>
+    </MotionConfig>
   );
 }

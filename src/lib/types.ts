@@ -1,3 +1,4 @@
+import type { LucideIcon } from 'lucide-react';
 export type ModuleId =
   | 'highlights'
   | 'notes'
@@ -9,9 +10,9 @@ export type ModuleId =
 export interface ModuleDef {
   id: ModuleId;
   label: string;
-  icon: string;
+  icon: LucideIcon;
   description: string;
-  accent: string; // tailwind color class for the tile accent
+  hue: 'yellow' | 'green' | 'blue' | 'pink' | 'gray' | 'red';
 }
 
 

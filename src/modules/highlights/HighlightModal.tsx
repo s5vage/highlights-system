@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'motion/react';
+import { Check, Copy, ExternalLink, Pin, PinOff, Trash2, X } from 'lucide-react';
 import { Highlight } from '@/lib/types';
-import { COLOR_HEX, readingTime, timeAgo, escapeHtml } from './helpers';
+import { cleanHtml, escapeHtml, fullDate, hueOf, readingTime } from './helpers';
 
 interface Props {
   highlight: Highlight;
@@ -12,17 +14,35 @@ interface Props {
   onDelete: () => void;
 }
 
-export default function HighlightModal({
-  highlight,
-  pinned,
-  onClose,
-  onTogglePin,
-  onDelete,
-}: Props) {
+export default function HighlightModal({ highlight, pinned, onClose, onTogglePin, onDelete }: Props) {
   const modalRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
-  const color = COLOR_HEX[highlight.color] || COLOR_HEX.yellow;
+  const [copied, setCopied] = useState(false);
 
+  const html = useMemo(
+    () => cleanHtml(highlight.html || escapeHtml(highlight.text)),
+    [highlight.html, highlight.text]
+  );
+  const hue = hueOf(highlight.color);
+  const mobile = typeof window !== 'undefined' && window.innerWidth <= 760;
+
+  let host = '';
+  try {
+    host = highlight.url ? new URL(highlight.url).hostname.replace('www.', '') : '';
+  } catch {
+    host = '';
+  }
+
+  // Escape closes the sheet.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // Desktop: drag the sheet by its header. Resizing uses the native corner handle.
   useEffect(() => {
     const modal = modalRef.current;
     const header = headerRef.current;
@@ -60,12 +80,10 @@ export default function HighlightModal({
 
     function onMouseMove(e: MouseEvent) {
       if (!dragging || !modal) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
       const maxLeft = window.innerWidth - modal.offsetWidth;
       const maxTop = window.innerHeight - modal.offsetHeight;
-      modal.style.left = Math.max(0, Math.min(maxLeft, startLeft + dx)) + 'px';
-      modal.style.top = Math.max(0, Math.min(maxTop, startTop + dy)) + 'px';
+      modal.style.left = Math.max(0, Math.min(maxLeft, startLeft + e.clientX - startX)) + 'px';
+      modal.style.top = Math.max(0, Math.min(maxTop, startTop + e.clientY - startY)) + 'px';
     }
 
     function onMouseUp() {
@@ -76,7 +94,6 @@ export default function HighlightModal({
     header.addEventListener('mousedown', onMouseDown);
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-
     return () => {
       header.removeEventListener('mousedown', onMouseDown);
       document.removeEventListener('mousemove', onMouseMove);
@@ -84,152 +101,113 @@ export default function HighlightModal({
     };
   }, []);
 
-  let host = '';
-  try {
-    host = highlight.url ? new URL(highlight.url).hostname.replace('www.', '') : '';
-  } catch {
-    host = '';
-  }
-
   function copyText() {
     navigator.clipboard.writeText(highlight.text || '');
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1400);
   }
 
   function handleDelete() {
-    if (confirm('Remove this highlight?')) {
+    if (confirm('Delete this highlight? This can’t be undone.')) {
       onDelete();
       onClose();
     }
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4 backdrop-blur-sm"
-      style={{ background: 'var(--overlay)' }}
+    <motion.div
+      className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-4"
+      style={{
+        background: 'var(--overlay)',
+        backdropFilter: 'blur(14px) saturate(130%)',
+        WebkitBackdropFilter: 'blur(14px) saturate(130%)',
+      }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div
+      <motion.div
         ref={modalRef}
-        className="relative flex flex-col overflow-hidden border resize-none md:resize
-          w-full md:w-[min(580px,92vw)]
-          h-[85dvh] md:h-[min(600px,85vh)]
-          md:min-w-[320px] md:min-h-[280px]
-          md:max-w-[94vw] md:max-h-[90vh]
-          rounded-t-2xl md:rounded-2xl"
-        style={{
-          background: 'var(--surface)',
-          borderColor: 'var(--border)',
-          paddingBottom: 'var(--safe-bottom)',
-        }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Highlight"
+        className="hl-sheet w-full h-[88dvh] md:h-auto md:max-h-[86vh] md:min-h-[260px] md:w-[min(620px,92vw)] md:min-w-[340px] md:max-w-[94vw] md:resize"
+        style={
+          {
+            '--hue': `var(--hue-${hue})`,
+            paddingBottom: 'var(--safe-bottom)',
+          } as React.CSSProperties
+        }
+        initial={mobile ? { y: '100%' } : { opacity: 0, scale: 0.96, y: 10 }}
+        animate={mobile ? { y: 0 } : { opacity: 1, scale: 1, y: 0 }}
+        exit={mobile ? { y: '100%' } : { opacity: 0, scale: 0.97, y: 6 }}
+        transition={{ type: 'spring', stiffness: 380, damping: 36 }}
       >
-        <div
-          className="absolute left-0 top-0 w-1 h-16 rounded-tl-2xl"
-          style={{ background: color }}
-        />
+        <div className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full md:hidden" style={{ background: 'var(--fill-strong)' }} />
+
         <div
           ref={headerRef}
-          className="flex items-center gap-3 px-6 py-4 border-b cursor-grab active:cursor-grabbing select-none"
-          style={{ borderColor: 'var(--border)' }}
+          className="flex shrink-0 select-none items-center gap-3 px-5 pb-3 pt-4 md:cursor-grab md:active:cursor-grabbing"
         >
-          <span className="text-xs font-mono" style={{ color: 'var(--text-faint)' }}>
-            {(host || 'saved') + ' · ' + timeAgo(highlight.created_at)}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[13.5px] font-semibold tracking-[-0.006em]">
+              {host || `Saved ${fullDate(highlight.created_at)}`}
+            </div>
+            {host && (
+              <div className="text-[12px]" style={{ color: 'var(--text-dim)' }}>
+                Saved {fullDate(highlight.created_at)}
+              </div>
+            )}
+          </div>
+          <span className="text-[12px] tnum" style={{ color: 'var(--text-faint)' }}>
+            {readingTime(highlight.text)} read
           </span>
-          <span
-            className="text-xs font-mono ml-auto mr-2"
-            style={{ color: 'var(--text-faint)' }}
-          >
-            {readingTime(highlight.text)}
-          </span>
-          <button
-            data-no-drag
-            onClick={onClose}
-            className="w-7 h-7 rounded-md border flex items-center justify-center hover:opacity-80"
-            style={{
-              background: 'var(--bg)',
-              borderColor: 'var(--border)',
-              color: 'var(--text-dim)',
-            }}
-          >
-            ✕
+          <button data-no-drag type="button" onClick={onClose} className="icon-btn !h-8 !w-8" aria-label="Close">
+            <X size={16} strokeWidth={2.2} />
           </button>
         </div>
 
-        <div className="px-6 py-5 overflow-y-auto flex-1">
-          <div
-            className="hl-content text-[15px] leading-relaxed"
-            style={{ color: 'var(--text)' }}
-            dangerouslySetInnerHTML={{ __html: highlight.html || escapeHtml(highlight.text) }}
-          />
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-1">
+          <div className="hl-content hl-content-lg" dangerouslySetInnerHTML={{ __html: html }} />
         </div>
 
         <div
           data-no-drag
-          className="flex flex-wrap items-center gap-2 px-5 py-3 border-t"
-          style={{ borderColor: 'var(--border)' }}
+          className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-3"
+          style={{ borderTop: '1px solid color-mix(in srgb, var(--hue) 14%, var(--hairline))' }}
         >
-          {(highlight.tags || []).map((t) => (
-            <span
-              key={t}
-              className="text-[11px] font-mono rounded-full px-2.5 py-1 border"
-              style={{
-                color: 'var(--text-dim)',
-                background: 'var(--bg)',
-                borderColor: 'var(--border)',
-              }}
-            >
-              #{t}
-            </span>
-          ))}
-          <div className="ml-auto flex gap-2">
-            <button
-              onClick={copyText}
-              className="text-xs font-mono rounded-md px-3 py-2 border hover:opacity-80"
-              style={{
-                color: 'var(--text-dim)',
-                background: 'var(--bg)',
-                borderColor: 'var(--border)',
-              }}
-            >
-              Copy
+          <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+            {(highlight.tags || []).map((t) => (
+              <span key={t} className="chip">
+                {t}
+              </span>
+            ))}
+          </div>
+          <div className="ml-auto flex flex-wrap gap-1.5">
+            <button type="button" onClick={copyText} className="btn">
+              {copied ? <Check size={15} strokeWidth={2.2} /> : <Copy size={15} strokeWidth={2} />}
+              {copied ? 'Copied' : 'Copy'}
             </button>
-            <button
-              onClick={onTogglePin}
-              className="text-xs font-mono rounded-md px-3 py-2 border hover:opacity-80"
-              style={{
-                color: 'var(--text-dim)',
-                background: 'var(--bg)',
-                borderColor: 'var(--border)',
-              }}
-            >
+            <button type="button" onClick={onTogglePin} className="btn">
+              {pinned ? <PinOff size={15} strokeWidth={2} /> : <Pin size={15} strokeWidth={2} />}
               {pinned ? 'Unpin' : 'Pin'}
             </button>
             {highlight.url && (
-              <a
-                href={highlight.url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-mono rounded-md px-3 py-2 hover:opacity-85"
-                style={{ background: 'var(--text)', color: 'var(--bg)' }}
-              >
+              <a href={highlight.url} target="_blank" rel="noreferrer" className="btn btn-primary">
+                <ExternalLink size={15} strokeWidth={2} />
                 Open
               </a>
             )}
-            <button
-              onClick={handleDelete}
-              className="text-xs font-mono rounded-md px-3 py-2 border hover:text-red-400 hover:border-red-900"
-              style={{
-                color: 'var(--text-dim)',
-                background: 'var(--bg)',
-                borderColor: 'var(--border)',
-              }}
-            >
-              Delete
+            <button type="button" onClick={handleDelete} className="btn btn-danger" aria-label="Delete highlight">
+              <Trash2 size={15} strokeWidth={2} />
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
