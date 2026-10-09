@@ -227,7 +227,7 @@ export default function HighlightsModule({ pendingId, onConsumedPending }: Props
           title="Couldn’t load your highlights"
           body={error}
           action={
-            <button type="button" className="btn btn-primary" onClick={reload}>
+                        <button type="button" className="btn btn-primary" onClick={() => reload()}>
               Try again
             </button>
           }
