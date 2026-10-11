@@ -5,13 +5,18 @@ import { supabase } from '@/lib/supabase';
 import { Note } from '@/lib/types';
 import { extractPlainText } from './helpers';
 
+export type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+
 export function useNotes() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // Only the very first load (or an explicit retry) shows the loading state.
+  // Realtime refreshes happen quietly in the background.
+  const load = useCallback(async (showSpinner = false) => {
+    if (showSpinner) setLoading(true);
     const { data, error } = await supabase
       .from('notes')
       .select('*')
@@ -27,7 +32,7 @@ export function useNotes() {
   }, []);
 
   useEffect(() => {
-    load();
+    load(true);
 
     const channel = supabase
       .channel('notes-changes')
@@ -54,7 +59,10 @@ export function useNotes() {
     return data as Note;
   }, []);
 
+  // Debounced per-note save so we're not hitting the DB on every keystroke.
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const pending = useRef<Set<string>>(new Set());
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const updateNote = useCallback(
     (id: string, patch: Partial<Pick<Note, 'title' | 'content' | 'tags' | 'color' | 'folder_id'>>) => {
@@ -62,18 +70,35 @@ export function useNotes() {
         prev.map((n) => (n.id === id ? { ...n, ...patch, updated_at: new Date().toISOString() } : n))
       );
 
+      pending.current.add(id);
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+      setSaveState('saving');
+
       if (saveTimers.current[id]) clearTimeout(saveTimers.current[id]);
       saveTimers.current[id] = setTimeout(async () => {
         const dbPatch: Record<string, unknown> = { ...patch, updated_at: new Date().toISOString() };
         if ('content' in patch) {
           dbPatch.search_text = extractPlainText(patch.content);
         }
-        await supabase.from('notes').update(dbPatch).eq('id', id);
+        const { error } = await supabase.from('notes').update(dbPatch).eq('id', id);
+        pending.current.delete(id);
+
+        if (error) {
+          setSaveState('error');
+          return;
+        }
+        if (pending.current.size === 0) {
+          setSaveState('saved');
+          idleTimer.current = setTimeout(() => setSaveState('idle'), 1800);
+        }
       }, 600);
     },
     []
   );
 
+  // Journal entries are just notes with is_journal=true and a journal_date.
+  // One per calendar day, enforced by a unique index in the DB — this
+  // fetches today's (or any date's) entry, creating it if it doesn't exist.
   const getOrCreateJournalEntry = useCallback(async (dateStr: string): Promise<Note | null> => {
     const { data: existing } = await supabase
       .from('notes')
@@ -104,6 +129,8 @@ export function useNotes() {
       .single();
 
     if (error) {
+      // Likely a race from the unique index if opened in two tabs at once —
+      // fall back to fetching whatever got created.
       const { data: fallback } = await supabase
         .from('notes')
         .select('*')
@@ -119,11 +146,24 @@ export function useNotes() {
     return data as Note;
   }, []);
 
-  const deleteNote = useCallback(async (id: string) => {
-    setNotes((prev) => prev.filter((n) => n.id !== id));
-    const { error } = await supabase.from('notes').delete().eq('id', id);
-    if (error) load();
-  }, [load]);
+  const deleteNote = useCallback(
+    async (id: string) => {
+      setNotes((prev) => prev.filter((n) => n.id !== id));
+      const { error } = await supabase.from('notes').delete().eq('id', id);
+      if (error) load();
+    },
+    [load]
+  );
 
-  return { notes, loading, error, createNote, updateNote, deleteNote, getOrCreateJournalEntry };
+  return {
+    notes,
+    loading,
+    error,
+    saveState,
+    reload: () => load(true),
+    createNote,
+    updateNote,
+    deleteNote,
+    getOrCreateJournalEntry,
+  };
 }

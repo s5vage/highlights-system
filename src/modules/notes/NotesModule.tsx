@@ -1,27 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Placeholder from '@tiptap/extension-placeholder';
-import TaskList from '@tiptap/extension-task-list';
-import TaskItem from '@tiptap/extension-task-item';
-import Highlight from '@tiptap/extension-highlight';
-import { TextStyle } from '@tiptap/extension-text-style';
-import FontFamily from '@tiptap/extension-font-family';
+import { useEffect, useMemo, useState } from 'react';
+import { MotionConfig } from 'motion/react';
+import { DatabaseZap, NotebookPen, SquarePen, TriangleAlert } from 'lucide-react';
 import { useNotes } from './useNotes';
 import { useFolders } from './useFolders';
-import EditorToolbar from './EditorToolbar';
-import { WikiLink } from './WikiLinkMark';
-import {
-  NOTE_COLORS,
-  colorHex,
-  timeAgo,
-  toDateStr,
-  formatJournalDate,
-  extractWikiLinkTitles,
-} from './helpers';
+import NotesSidebar from './NotesSidebar';
+import NoteList, { ScopeOption } from './NoteList';
+import NoteEditor from './NoteEditor';
+import StateMessage from '@/components/StateMessage';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { Note } from '@/lib/types';
+import { previewOf, toDateStr } from './helpers';
+
+const FOLDER_HUES = ['blue', 'green', 'pink', 'yellow', 'gray'];
+
+const byUpdated = (a: Note, b: Note) =>
+  new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
 
 interface Props {
   pendingId?: string | null;
@@ -29,465 +24,322 @@ interface Props {
 }
 
 export default function NotesModule({ pendingId, onConsumedPending }: Props = {}) {
-  const { notes, loading, error, createNote, updateNote, deleteNote, getOrCreateJournalEntry } = useNotes();
+  const {
+    notes,
+    loading,
+    error,
+    saveState,
+    reload,
+    createNote,
+    updateNote,
+    deleteNote,
+    getOrCreateJournalEntry,
+  } = useNotes();
   const { folders, createFolder, deleteFolder } = useFolders();
+
+  // scope: 'all' | 'unfiled' | 'journal' | a folder id
+  const [scope, setScope] = useState('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [activeFolder, setActiveFolder] = useState<string | null | 'all'>('all');
-  const [journalMode, setJournalMode] = useState(false);
-  const [journalDate, setJournalDate] = useState<string>(toDateStr(new Date()));
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [focusTitle, setFocusTitle] = useState(false);
 
-  const journalEntries = [...notes]
-    .filter((n) => n.is_journal)
-    .sort((a, b) => (b.journal_date || '').localeCompare(a.journal_date || ''));
+  const journal = scope === 'journal';
+  const selected = notes.find((n) => n.id === selectedId) ?? null;
 
-  const selected = notes.find((n) => n.id === selectedId) || null;
+  const scoped = useMemo(() => {
+    if (journal) return notes.filter((n) => n.is_journal);
+    const regular = notes.filter((n) => !n.is_journal);
+    if (scope === 'all') return regular;
+    if (scope === 'unfiled') return regular.filter((n) => !n.folder_id);
+    return regular.filter((n) => n.folder_id === scope);
+  }, [notes, scope, journal]);
 
-  const backlinks = selected
-    ? notes.filter(
-        (n) =>
-          n.id !== selected.id &&
-          extractWikiLinkTitles(n.content).some(
-            (t) => t.trim().toLowerCase() === selected.title.trim().toLowerCase()
-          )
-      )
-    : [];
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = q
+      ? scoped.filter((n) => n.title.toLowerCase().includes(q) || previewOf(n.content).toLowerCase().includes(q))
+      : scoped;
+    return [...list].sort(
+      journal ? (a, b) => (b.journal_date || '').localeCompare(a.journal_date || '') : byUpdated
+    );
+  }, [scoped, query, journal]);
+
+  const counts = useMemo(() => {
+    const regular = notes.filter((n) => !n.is_journal);
+    const byFolder: Record<string, number> = {};
+    regular.forEach((n) => {
+      if (n.folder_id) byFolder[n.folder_id] = (byFolder[n.folder_id] || 0) + 1;
+    });
+    return {
+      all: regular.length,
+      unfiled: regular.filter((n) => !n.folder_id).length,
+      journal: notes.length - regular.length,
+      byFolder,
+    };
+  }, [notes]);
+
+  // On desktop, open the most recent note automatically.
+  useEffect(() => {
+    if (!loading && !selectedId && visible.length > 0) setSelectedId(visible[0].id);
+  }, [loading, selectedId, visible]);
+
+  // Deep links from global search.
+  useEffect(() => {
+    if (!pendingId) return;
+    const match = notes.find((n) => n.id === pendingId);
+    if (match) {
+      setScope(match.is_journal ? 'journal' : 'all');
+      setQuery('');
+      setSelectedId(match.id);
+      setMobileOpen(true);
+      onConsumedPending?.();
+    }
+  }, [pendingId, notes, onConsumedPending]);
+
+  async function openJournalDate(dateStr: string, openOnPhone = true) {
+    const entry = await getOrCreateJournalEntry(dateStr);
+    if (entry) {
+      setSelectedId(entry.id);
+      if (openOnPhone) setMobileOpen(true);
+    }
+  }
+
+  function changeScope(next: string) {
+    setScope(next);
+    setQuery('');
+    setMobileOpen(false);
+    if (next === 'journal') {
+      openJournalDate(toDateStr(new Date()), false);
+      return;
+    }
+    const inScope = (n: Note) =>
+      !n.is_journal && (next === 'all' || (next === 'unfiled' ? !n.folder_id : n.folder_id === next));
+    if (!selected || !inScope(selected)) {
+      setSelectedId(notes.filter(inScope).sort(byUpdated)[0]?.id ?? null);
+    }
+  }
+
+  async function handleCreate() {
+    if (journal) {
+      await openJournalDate(toDateStr(new Date()));
+      return;
+    }
+    const folderId = scope !== 'all' && scope !== 'unfiled' ? scope : null;
+    const note = await createNote(folderId);
+    if (note) {
+      setQuery('');
+      setSelectedId(note.id);
+      setMobileOpen(true);
+      setFocusTitle(true);
+    }
+  }
+
+  function handleSelect(id: string) {
+    setSelectedId(id);
+    setMobileOpen(true);
+  }
+
+  function handleDelete() {
+    if (!selected) return;
+    const label = journal ? 'this journal entry' : `“${selected.title || 'Untitled'}”`;
+    if (!confirm(`Delete ${label}? This can’t be undone.`)) return;
+    const idx = visible.findIndex((n) => n.id === selected.id);
+    const next = visible[idx + 1] ?? visible[idx - 1] ?? null;
+    deleteNote(selected.id);
+    setSelectedId(next?.id ?? null);
+    setMobileOpen(false);
+  }
 
   function navigateToTitle(title: string) {
-    const match = notes.find((n) => n.title.toLowerCase() === title.toLowerCase());
+    const match = notes.find((n) => !n.is_journal && n.title.trim().toLowerCase() === title.trim().toLowerCase());
     if (match) {
-      setJournalMode(false);
+      setScope('all');
       setSelectedId(match.id);
-    } else if (confirm(`No note titled "${title}" yet. Create it?`)) {
-      createNote().then((note) => {
+      setMobileOpen(true);
+    } else if (confirm(`There’s no note called “${title}” yet. Create it?`)) {
+      createNote(null).then((note) => {
         if (note) {
           updateNote(note.id, { title });
-          setJournalMode(false);
+          setScope('all');
           setSelectedId(note.id);
+          setMobileOpen(true);
         }
       });
     }
   }
 
-  function handleEditorClick(e: React.MouseEvent) {
-    const target = (e.target as HTMLElement).closest('[data-wiki-link]');
-    if (!target) return;
-    e.preventDefault();
-    navigateToTitle(target.textContent || '');
-  }
-
-  const visibleNotes =
-    activeFolder === 'all'
-      ? notes
-      : activeFolder === null
-      ? notes.filter((n) => !n.folder_id)
-      : notes.filter((n) => n.folder_id === activeFolder);
-
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Placeholder.configure({ placeholder: 'Start writing…' }),
-      TaskList,
-      TaskItem.configure({ nested: true }),
-      TextStyle,
-      FontFamily,
-      Highlight.configure({ multicolor: true }),
-      WikiLink,
-    ],
-    content: '',
-    immediatelyRender: false,
-    onUpdate: ({ editor }) => {
-      if (selectedId) updateNote(selectedId, { content: editor.getJSON() });
-    },
-  });
-
-  useEffect(() => {
-    if (!selectedId && visibleNotes.length > 0) {
-      setSelectedId(visibleNotes[0].id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notes]);
-
-  useEffect(() => {
-    if (!editor) return;
-    if (selected) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      editor.commands.setContent((selected.content as any) || '', { emitUpdate: false });
-    } else {
-      editor.commands.setContent('', { emitUpdate: false });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, editor]);
-
-    useEffect(() => {
-    if (!pendingId) return;
-    const match = notes.find((n) => n.id === pendingId);
-    if (match) {
-      setJournalMode(false);
-      setActiveFolder('all');
-      setSelectedId(match.id);
-      onConsumedPending?.();
-    }
-  }, [pendingId, notes, onConsumedPending]);
-
-  async function handleCreate() {
-    const folderId = activeFolder === 'all' || activeFolder === null ? null : activeFolder;
-    const note = await createNote(folderId);
-    if (note) setSelectedId(note.id);
-  }
-
-  function handleDelete(id: string) {
-    if (!confirm('Delete this note?')) return;
-    deleteNote(id);
-    if (selectedId === id) {
-      const remaining = visibleNotes.filter((n) => n.id !== id);
-      setSelectedId(remaining[0]?.id ?? null);
-    }
-  }
-
-  async function openJournalDate(dateStr: string) {
-    setJournalDate(dateStr);
-    const entry = await getOrCreateJournalEntry(dateStr);
-    if (entry) setSelectedId(entry.id);
-  }
-
-  function openJournal() {
-    setJournalMode(true);
-    openJournalDate(toDateStr(new Date()));
-  }
-
-  function exitJournal(toFolder: string | null | 'all') {
-    setJournalMode(false);
-    setActiveFolder(toFolder);
-  }
-
   function shiftJournalDay(delta: number) {
-    const d = new Date(journalDate + 'T00:00:00');
+    if (!selected?.journal_date) return;
+    const d = new Date(selected.journal_date + 'T00:00:00');
     d.setDate(d.getDate() + delta);
     openJournalDate(toDateStr(d));
   }
 
-  async function handleNewFolder() {
-    const name = prompt('Folder name');
-    if (!name) return;
-    await createFolder(name, 'blue');
+  async function handleCreateFolder(name: string) {
+    const color = FOLDER_HUES[folders.length % FOLDER_HUES.length];
+    const folder = await createFolder(name, color);
+    if (folder) changeScope(folder.id);
   }
+
+  function handleDeleteFolder(id: string) {
+    const folder = folders.find((f) => f.id === id);
+    if (!confirm(`Delete the folder “${folder?.name}”? Its notes won’t be deleted. They move to Unfiled.`)) return;
+    deleteFolder(id);
+    if (scope === id) changeScope('all');
+  }
+
+  const scopes: ScopeOption[] = [
+    { id: 'journal', label: 'Journal' },
+    { id: 'all', label: 'All notes' },
+    { id: 'unfiled', label: 'Unfiled' },
+    ...folders.map((f) => ({ id: f.id, label: f.name })),
+  ];
+
+  const scopeTitle =
+    scope === 'journal'
+      ? 'Journal'
+      : scope === 'all'
+      ? 'All notes'
+      : scope === 'unfiled'
+      ? 'Unfiled'
+      : folders.find((f) => f.id === scope)?.name ?? 'Notes';
+  const total = visible.length;
+  const subtitle = query
+    ? `${total} ${total === 1 ? 'result' : 'results'}`
+    : journal
+    ? `${total} ${total === 1 ? 'entry' : 'entries'}`
+    : `${total} ${total === 1 ? 'note' : 'notes'}`;
 
   if (!isSupabaseConfigured) {
     return (
-      <div className="h-full flex items-center justify-center text-center px-6" style={{ background: 'var(--bg)' }}>
-        <div className="max-w-sm">
-          <div className="text-2xl mb-3">⚠️</div>
-          <div className="text-sm font-semibold mb-2" style={{ color: 'var(--text)' }}>Database not connected</div>
-          <p className="text-xs leading-relaxed" style={{ color: 'var(--text-dim)' }}>
-            Add your Supabase env vars to <code>.env.local</code>, then restart the dev server.
-          </p>
-        </div>
+      <div className="h-full" style={{ background: 'var(--bg)' }}>
+        <StateMessage
+          icon={<DatabaseZap size={22} strokeWidth={1.8} />}
+          title="Database not connected"
+          body="Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to your .env.local file, then restart the dev server."
+        />
       </div>
     );
   }
 
-  if (loading) {
+  if (error && notes.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center text-sm" style={{ background: 'var(--bg)', color: 'var(--text-dim)' }}>
-        Loading notes…
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="h-full flex items-center justify-center text-center px-6" style={{ background: 'var(--bg)' }}>
-        <div>
-          <div className="text-red-400 text-sm mb-2">Couldn&apos;t load notes</div>
-          <div className="text-xs font-mono" style={{ color: 'var(--text-faint)' }}>{error}</div>
-        </div>
+      <div className="h-full" style={{ background: 'var(--bg)' }}>
+        <StateMessage
+          icon={<TriangleAlert size={22} strokeWidth={1.8} />}
+          title="Couldn’t load your notes"
+          body={
+            error.includes('relation')
+              ? 'The notes table doesn’t exist in Supabase yet. Create it, then try again.'
+              : error
+          }
+          action={
+            <button type="button" className="btn btn-primary" onClick={() => reload()}>
+              Try again
+            </button>
+          }
+        />
       </div>
     );
   }
 
   return (
-    <div className="h-full flex" style={{ background: 'var(--bg)' }}>
-      {/* Folders rail */}
-      <div
-        className="w-[150px] shrink-0 border-r p-3 overflow-y-auto hidden lg:block"
-        style={{ borderColor: 'var(--border)' }}
-      >
-        <div className="text-[10px] uppercase tracking-wider font-mono mb-2 px-1" style={{ color: 'var(--text-faint)' }}>
-          Folders
-        </div>
-        <button
-          onClick={openJournal}
-          className="w-full text-left px-2 py-1.5 rounded-md text-[13px] mb-2"
-          style={journalMode ? { background: 'var(--surface)', color: 'var(--text)' } : { color: 'var(--text-dim)' }}
-        >
-          📅 Journal
-        </button>
-        <button
-          onClick={() => exitJournal('all')}
-          className="w-full text-left px-2 py-1.5 rounded-md text-[13px] mb-0.5"
-          style={!journalMode && activeFolder === 'all' ? { background: 'var(--surface)', color: 'var(--text)' } : { color: 'var(--text-dim)' }}
-        >
-          All notes
-        </button>
-        <button
-          onClick={() => exitJournal(null)}
-          className="w-full text-left px-2 py-1.5 rounded-md text-[13px] mb-2"
-          style={!journalMode && activeFolder === null ? { background: 'var(--surface)', color: 'var(--text)' } : { color: 'var(--text-dim)' }}
-        >
-          Unfiled
-        </button>
-        {folders.map((f) => (
-          <div key={f.id} className="group relative">
-            <button
-              onClick={() => exitJournal(f.id)}
-              className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-[13px] mb-0.5 pr-6"
-              style={!journalMode && activeFolder === f.id ? { background: 'var(--surface)', color: 'var(--text)' } : { color: 'var(--text-dim)' }}
-            >
-              <span
-                className="w-2 h-2 rounded-full shrink-0"
-                style={{ background: colorHex(f.color) || 'var(--text-faint)' }}
-              />
-              <span className="truncate">{f.name}</span>
-            </button>
-            <button
-              onClick={() => deleteFolder(f.id)}
-              className="absolute top-1.5 right-1.5 w-4 h-4 rounded opacity-0 group-hover:opacity-100 text-[10px]"
-              style={{ color: 'var(--text-faint)' }}
-            >
-              ✕
-            </button>
-          </div>
-        ))}
-        <button
-          onClick={handleNewFolder}
-          className="w-full text-left px-2 py-1.5 rounded-md text-[13px] mt-1"
-          style={{ color: 'var(--text-faint)' }}
-        >
-          + New folder
-        </button>
-      </div>
+    <MotionConfig reducedMotion="user">
+      <div className="flex h-full" style={{ background: 'var(--bg)' }}>
+        <NotesSidebar
+          scope={scope}
+          folders={folders}
+          counts={counts}
+          onScope={changeScope}
+          onCreateFolder={handleCreateFolder}
+          onDeleteFolder={handleDeleteFolder}
+        />
 
-      {/* Note list */}
-      <div
-        className="w-[230px] shrink-0 border-r flex flex-col hidden md:flex"
-        style={{ borderColor: 'var(--border)' }}
-      >
-        <div className="p-3 border-b" style={{ borderColor: 'var(--border)' }}>
-          {journalMode ? (
-            <button
-              onClick={() => openJournalDate(toDateStr(new Date()))}
-              className="w-full text-sm font-medium rounded-lg py-2"
-              style={{ background: 'var(--text)', color: 'var(--bg)' }}
-            >
-              Jump to today
-            </button>
-          ) : (
-            <button
-              onClick={handleCreate}
-              className="w-full text-sm font-medium rounded-lg py-2"
-              style={{ background: 'var(--text)', color: 'var(--bg)' }}
-            >
-              + New note
-            </button>
-          )}
+        {/* Note list: the whole screen on phones until a note is opened */}
+        <div
+          className={`${mobileOpen ? 'hidden' : 'flex'} min-w-0 flex-1 flex-col md:flex md:w-[330px] md:flex-none md:shrink-0`}
+          style={{ borderRight: '1px solid var(--hairline)' }}
+        >
+          <NoteList
+            title={scopeTitle}
+            subtitle={subtitle}
+            notes={visible}
+            loading={loading}
+            selectedId={selectedId}
+            query={query}
+            onQuery={setQuery}
+            onSelect={handleSelect}
+            onCreate={handleCreate}
+            journal={journal}
+            folders={folders}
+            showFolderLabel={scope === 'all'}
+            scopes={scopes}
+            scope={scope}
+            onScope={changeScope}
+          />
         </div>
-        <div className="flex-1 overflow-y-auto p-2">
-          {journalMode ? (
-            <>
-              {journalEntries.length === 0 && (
-                <div className="text-xs text-center py-10 px-3" style={{ color: 'var(--text-faint)' }}>
-                  No journal entries yet.
-                </div>
-              )}
-              {journalEntries.map((n) => (
-                <div
-                  key={n.id}
-                  onClick={() => n.journal_date && openJournalDate(n.journal_date)}
-                  className="rounded-lg px-3 py-2.5 cursor-pointer mb-1"
-                  style={
-                    journalDate === n.journal_date
-                      ? { background: 'var(--surface)' }
-                      : { background: 'transparent' }
-                  }
-                >
-                  <div className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>
-                    {n.journal_date ? formatJournalDate(n.journal_date) : n.title}
-                  </div>
-                  <div className="text-[11px] font-mono mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                    {timeAgo(n.updated_at)}
-                  </div>
-                </div>
-              ))}
-            </>
-          ) : (
-            <>
-          {visibleNotes.length === 0 && (
-            <div className="text-xs text-center py-10 px-3" style={{ color: 'var(--text-faint)' }}>
-              No notes here yet.
-            </div>
-          )}
-          {visibleNotes.map((n) => {
-            const hex = colorHex(n.color);
-            return (
-              <div
-                key={n.id}
-                onClick={() => setSelectedId(n.id)}
-                className="group relative rounded-lg pl-3.5 pr-3 py-2.5 cursor-pointer mb-1 overflow-hidden"
-                style={selectedId === n.id ? { background: 'var(--surface)' } : { background: 'transparent' }}
-              >
-                {hex && (
-                  <span
-                    className="absolute left-0 top-2 bottom-2 w-[3px] rounded"
-                    style={{ background: hex }}
-                  />
-                )}
-                <div className="text-sm font-medium truncate pr-5" style={{ color: 'var(--text)' }}>
-                  {n.title || 'Untitled'}
-                </div>
-                <div className="text-[11px] font-mono mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                  {timeAgo(n.updated_at)}
-                </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleDelete(n.id); }}
-                  className="absolute top-2 right-2 w-5 h-5 rounded opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs"
-                  style={{ color: 'var(--text-faint)' }}
-                >
-                  ✕
-                </button>
-              </div>
-            );
-          })}
-            </>
-          )}
-        </div>
-      </div>
 
-      {/* Editor */}
-      <div className="flex-1 min-w-0 flex flex-col">
-        {!selected ? (
-          <div className="h-full flex items-center justify-center text-center px-6">
-            <div>
-              <div className="text-2xl mb-3">📝</div>
-              <p className="text-sm mb-4" style={{ color: 'var(--text-dim)' }}>
-                {notes.length === 0 ? 'No notes yet.' : 'Select a note or create one.'}
-              </p>
-              <button
-                onClick={handleCreate}
-                className="text-sm font-medium rounded-lg px-4 py-2"
-                style={{ background: 'var(--text)', color: 'var(--bg)' }}
-              >
-                + New note
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            {journalMode && (
-              <div
-                className="flex items-center gap-3 px-6 pt-5 pb-3 border-b"
-                style={{ borderColor: 'var(--border)' }}
-              >
-                <button
-                  onClick={() => shiftJournalDay(-1)}
-                  className="w-7 h-7 rounded-md border flex items-center justify-center"
-                  style={{ borderColor: 'var(--border)', color: 'var(--text-dim)' }}
-                >
-                  ←
-                </button>
-                <div className="text-sm font-medium" style={{ color: 'var(--text)' }}>
-                  {formatJournalDate(journalDate)}
-                </div>
-                <button
-                  onClick={() => shiftJournalDay(1)}
-                  className="w-7 h-7 rounded-md border flex items-center justify-center"
-                  style={{ borderColor: 'var(--border)', color: 'var(--text-dim)' }}
-                >
-                  →
-                </button>
-                {journalDate !== toDateStr(new Date()) && (
-                  <button
-                    onClick={() => openJournalDate(toDateStr(new Date()))}
-                    className="text-xs font-mono ml-1"
-                    style={{ color: 'var(--text-faint)' }}
-                  >
-                    Today
+        {/* Editor */}
+        <div className={`${mobileOpen ? 'flex' : 'hidden'} min-w-0 flex-1 md:flex`} style={{ background: 'var(--surface)' }}>
+          {selected ? (
+            <NoteEditor
+              key={selected.id}
+              note={selected}
+              notes={notes}
+              folders={folders}
+              journal={journal}
+              saveState={saveState}
+              focusTitle={focusTitle}
+              onTitleFocused={() => setFocusTitle(false)}
+              onUpdate={(patch) => updateNote(selected.id, patch)}
+              onDelete={handleDelete}
+              onOpenNote={(id) => {
+                setJournalModeOff();
+                handleSelect(id);
+              }}
+              onNavigateTitle={navigateToTitle}
+              onShiftDay={shiftJournalDay}
+              onGoToday={() => openJournalDate(toDateStr(new Date()))}
+              onBack={() => setMobileOpen(false)}
+            />
+          ) : (
+            <div className="grid h-full w-full place-items-center">
+              <StateMessage
+                icon={<NotebookPen size={22} strokeWidth={1.8} />}
+                title={
+                  notes.length === 0
+                    ? 'Write your first note'
+                    : visible.length === 0 && !query
+                    ? journal
+                      ? 'No journal entries yet'
+                      : `Nothing in ${scopeTitle} yet`
+                    : 'No note selected'
+                }
+                body={
+                  notes.length === 0
+                    ? 'Notes support headings, checklists, highlights, and links to other notes.'
+                    : visible.length === 0 && !query
+                    ? journal
+                      ? 'Open today’s entry to start your journal.'
+                      : 'Create a note here and it will be saved in this view.'
+                    : 'Pick a note from the list, or start a new one.'
+                }
+                action={
+                  <button type="button" className="btn btn-primary" onClick={handleCreate}>
+                    <SquarePen size={15} strokeWidth={2} />
+                    New note
                   </button>
-                )}
-              </div>
-            )}
-            <div className="flex items-start gap-3 px-6 pt-6 pb-1">
-              <input
-                value={selected.title}
-                onChange={(e) => updateNote(selected.id, { title: e.target.value })}
-                placeholder="Untitled"
-                className="flex-1 text-xl font-semibold outline-none bg-transparent"
-                style={{ color: 'var(--text)' }}
+                }
               />
-              <div className="flex items-center gap-1.5 pt-2">
-                {NOTE_COLORS.map((c) => (
-                  <button
-                    key={c.id}
-                    title={c.label}
-                    onClick={() => updateNote(selected.id, { color: selected.color === c.id ? null : c.id })}
-                    className="w-4 h-4 rounded-full border-2"
-                    style={{
-                      background: c.hex,
-                      borderColor: selected.color === c.id ? 'var(--text)' : 'transparent',
-                    }}
-                  />
-                ))}
-              </div>
             </div>
-            {folders.length > 0 && (
-              <div className="px-6 pb-3">
-                <select
-                  value={selected.folder_id || ''}
-                  onChange={(e) => updateNote(selected.id, { folder_id: e.target.value || null })}
-                  className="text-xs rounded-md border px-2 py-1 bg-transparent"
-                  style={{ borderColor: 'var(--border)', color: 'var(--text-dim)' }}
-                >
-                  <option value="">No folder</option>
-                  {folders.map((f) => (
-                    <option key={f.id} value={f.id} style={{ color: '#000' }}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-                        <EditorToolbar editor={editor} />
-            <div className="flex-1 overflow-y-auto px-6 py-4" onClick={handleEditorClick}>
-              <EditorContent editor={editor} className="tiptap-content" />
-
-              {backlinks.length > 0 && (
-                <div className="mt-8 pt-5 border-t" style={{ borderColor: 'var(--border)' }}>
-                  <div
-                    className="text-[10px] uppercase tracking-wider font-mono mb-2"
-                    style={{ color: 'var(--text-faint)' }}
-                  >
-                    Linked from
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    {backlinks.map((n) => (
-                      <button
-                        key={n.id}
-                        onClick={() => {
-                          setJournalMode(false);
-                          setSelectedId(n.id);
-                        }}
-                        className="text-left text-sm rounded-md px-2.5 py-1.5"
-                        style={{ color: 'var(--text-dim)' }}
-                      >
-                        {n.title || 'Untitled'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
-        )}
+          )}
+        </div>
       </div>
-    </div>
+    </MotionConfig>
   );
+
+  function setJournalModeOff() {
+    if (journal) setScope('all');
+  }
 }
