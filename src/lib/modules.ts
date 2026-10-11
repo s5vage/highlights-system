@@ -1,4 +1,4 @@
-import { Highlighter, NotebookPen, Shapes, Network, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { BookOpenText, Highlighter, NotebookPen, Shapes, Network, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { ModuleDef } from './types';
 
 export const MODULES: ModuleDef[] = [
@@ -15,6 +15,13 @@ export const MODULES: ModuleDef[] = [
     icon: NotebookPen,
     description: 'Write, organize, and link your own notes',
     hue: 'blue',
+  },
+  {
+    id: 'library',
+    label: 'Library',
+    icon: BookOpenText,
+    description: 'Your PDF books, with your place saved in each one',
+    hue: 'purple',
   },
   {
     id: 'canvas',

@@ -2,17 +2,19 @@ import type { LucideIcon } from 'lucide-react';
 export type ModuleId =
   | 'highlights'
   | 'notes'
+  | 'library'
   | 'canvas'
   | 'graph'
   | 'settings'
   | 'trash';
+
 
 export interface ModuleDef {
   id: ModuleId;
   label: string;
   icon: LucideIcon;
   description: string;
-  hue: 'yellow' | 'green' | 'blue' | 'pink' | 'gray' | 'red';
+   hue: 'yellow' | 'green' | 'blue' | 'pink' | 'gray' | 'red' | 'purple';
 }
 
 
@@ -55,4 +57,17 @@ export interface OpenTab {
   moduleId: TabModuleId;
   title: string;
   closable: boolean;
+}
+
+export interface Book {
+  id: string;
+  title: string;
+  author: string | null;
+  file_path: string;
+  cover_path: string | null;
+  size_bytes: number;
+  page_count: number;
+  last_page: number;
+  created_at: string;
+  last_opened_at: string | null;
 }

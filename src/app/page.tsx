@@ -8,6 +8,7 @@ import PlaceholderModule from '@/modules/PlaceholderModule';
 import HighlightsModule from '@/modules/highlights/HighlightsModule';
 import NotesModule from '@/modules/notes/NotesModule';
 import GraphModule from '@/modules/graph/GraphModule';
+import LibraryModule from '@/modules/library/LibraryModule';
 import { MODULES } from '@/lib/modules';
 import { ModuleId, OpenTab } from '@/lib/types';
 
@@ -105,6 +106,7 @@ export default function Page() {
           />
         )}
         {activeTab.moduleId === 'graph' && <GraphModule onOpenModule={openModule} />}
+                {activeTab.moduleId === 'library' && <LibraryModule />}
         {activeTab.moduleId === 'settings' && (
           <PlaceholderModule
             title="Settings"
