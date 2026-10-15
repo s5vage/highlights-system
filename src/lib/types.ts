@@ -70,4 +70,25 @@ export interface Book {
   last_page: number;
   created_at: string;
   last_opened_at: string | null;
+    storage: 'supabase' | 'r2';
+}
+
+// A rectangle on a PDF page, as fractions (0 to 1) of the page's width and
+// height, so it stays in the right place at any zoom level.
+export interface HlRect {
+  page: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface BookHighlight {
+  id: string;
+  book_id: string;
+  page: number;
+  color: HighlightColor;
+  text: string;
+  rects: HlRect[];
+  created_at: string;
 }

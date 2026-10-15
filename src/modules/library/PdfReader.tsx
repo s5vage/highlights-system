@@ -1,11 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import { ChevronLeft, Minus, Moon, Plus, Sun, TriangleAlert } from 'lucide-react';
 import StateMessage from '@/components/StateMessage';
-import { Book } from '@/lib/types';
+import { Book, HighlightColor, HlRect } from '@/lib/types';
 import { loadPdfjs } from './pdf';
+import { HighlightMenu, SelectionBar } from './HighlightTools';
+import { useBookHighlights } from './useBookHighlights';
 
 interface Props {
   book: Book;
@@ -21,6 +23,50 @@ interface Size {
 
 const NIGHT_KEY = 'lib_night';
 
+interface PageHl {
+  id: string;
+  color: HighlightColor;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+interface SelectionState {
+  x: number;
+  y: number;
+  below: boolean;
+  text: string;
+  rects: HlRect[];
+}
+
+const NO_ITEMS: PageHl[] = [];
+
+// A selection comes back as one box per word or fragment; join them into one
+// clean box per line so the highlight looks like a marker stroke.
+function mergeLineRects(rs: DOMRect[]) {
+  const items = rs
+    .map((r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom }))
+    .sort((a, b) => a.top - b.top || a.left - b.left);
+  const out: typeof items = [];
+  for (const r of items) {
+    const last = out[out.length - 1];
+    if (last) {
+      const overlap = Math.min(last.bottom, r.bottom) - Math.max(last.top, r.top);
+      const minH = Math.min(last.bottom - last.top, r.bottom - r.top);
+      if (overlap > minH * 0.5 && r.left <= last.right + 6) {
+        last.left = Math.min(last.left, r.left);
+        last.right = Math.max(last.right, r.right);
+        last.top = Math.min(last.top, r.top);
+        last.bottom = Math.max(last.bottom, r.bottom);
+        continue;
+      }
+    }
+    out.push({ ...r });
+  }
+  return out;
+}
+
 function PdfPage({
   pdf,
   pageNumber,
@@ -28,6 +74,8 @@ function PdfPage({
   base,
   root,
   setEl,
+  items,
+  onPageClick,
 }: {
   pdf: PDFDocumentProxy;
   pageNumber: number;
@@ -35,6 +83,8 @@ function PdfPage({
   base: Size;
   root: HTMLElement | null;
   setEl: (n: number, el: HTMLDivElement | null) => void;
+  items: PageHl[];
+  onPageClick: (e: React.MouseEvent<HTMLDivElement>, items: PageHl[]) => void;
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -116,6 +166,7 @@ function PdfPage({
       }}
       className="pdf-page"
       data-page={pageNumber}
+      onClick={(e) => onPageClick(e, items)}
       style={
         {
           width: w,
@@ -127,6 +178,16 @@ function PdfPage({
       }
     >
       <canvas ref={canvasRef} />
+      <div className="pdf-hl-layer" aria-hidden>
+        {items.map((it, i) => (
+          <div
+            key={`${it.id}-${i}`}
+            className="pdf-hl"
+            data-color={it.color}
+            style={{ left: `${it.x * 100}%`, top: `${it.y * 100}%`, width: `${it.w * 100}%`, height: `${it.h * 100}%` }}
+          />
+        ))}
+      </div>
       <div ref={textRef} className="textLayer" />
     </div>
   );
@@ -294,6 +355,130 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
     pageEls.current[n - 1] = el;
   }, []);
 
+  const [toast, setToast] = useState<string | null>(null);
+  const notify = useCallback((m: string) => setToast(m), []);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2600);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const hl = useBookHighlights(book, notify);
+  const [sel, setSel] = useState<SelectionState | null>(null);
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const pointerDown = useRef(false);
+
+  const byPage = useMemo(() => {
+    const m = new Map<number, PageHl[]>();
+    hl.items.forEach((h) =>
+      h.rects.forEach((r) => {
+        const list = m.get(r.page) ?? [];
+        list.push({ id: h.id, color: h.color, x: r.x, y: r.y, w: r.w, h: r.h });
+        m.set(r.page, list);
+      })
+    );
+    return m;
+  }, [hl.items]);
+
+  // Turn the current text selection into highlight boxes (as fractions of each page).
+  const capture = useCallback((): SelectionState | null => {
+    const scroller = scrollRef.current;
+    const s = window.getSelection();
+    if (!scroller || !s || s.isCollapsed || s.rangeCount === 0) return null;
+    const range = s.getRangeAt(0);
+    if (!scroller.contains(range.commonAncestorContainer)) return null;
+    const text = s.toString().replace(/\s+/g, ' ').trim();
+    if (!text) return null;
+
+    const rects: HlRect[] = [];
+    pageEls.current.forEach((wrap, i) => {
+      if (!wrap) return;
+      const layer = wrap.querySelector('.textLayer');
+      if (!layer || !range.intersectsNode(layer)) return;
+      const part = document.createRange();
+      part.selectNodeContents(layer);
+      if (range.compareBoundaryPoints(Range.START_TO_START, part) > 0) part.setStart(range.startContainer, range.startOffset);
+      if (range.compareBoundaryPoints(Range.END_TO_END, part) < 0) part.setEnd(range.endContainer, range.endOffset);
+      const box = wrap.getBoundingClientRect();
+      const raw = Array.from(part.getClientRects()).filter((r) => r.width > 1 && r.height > 1);
+      mergeLineRects(raw).forEach((r) =>
+        rects.push({
+          page: i + 1,
+          x: (r.left - box.left) / box.width,
+          y: (r.top - box.top) / box.height,
+          w: (r.right - r.left) / box.width,
+          h: (r.bottom - r.top) / box.height,
+        })
+      );
+    });
+    if (rects.length === 0) return null;
+
+    const bounds = range.getBoundingClientRect();
+    const below = window.matchMedia('(pointer: coarse)').matches || bounds.top < 130;
+    return { x: bounds.left + bounds.width / 2, y: below ? bounds.bottom : bounds.top, below, text, rects };
+  }, []);
+
+  // Show the highlight bar whenever text is selected (and you've let go of the mouse).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (!pointerDown.current) setSel(capture());
+      });
+    };
+    const down = () => {
+      pointerDown.current = true;
+      setSel(null);
+    };
+    const up = () => {
+      pointerDown.current = false;
+      update();
+    };
+    el.addEventListener('pointerdown', down);
+    el.addEventListener('scroll', update);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    document.addEventListener('selectionchange', update);
+    return () => {
+      cancelAnimationFrame(frame);
+      el.removeEventListener('pointerdown', down);
+      el.removeEventListener('scroll', update);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      document.removeEventListener('selectionchange', update);
+    };
+  }, [capture, status]);
+
+  function pickColor(color: HighlightColor) {
+    if (!sel) return;
+    hl.create({ color, text: sel.text, rects: sel.rects });
+    window.getSelection()?.removeAllRanges();
+    setSel(null);
+  }
+
+  function copyText(text: string) {
+    navigator.clipboard
+      .writeText(text)
+      .then(() => notify('Copied'))
+      .catch(() => notify('Couldn’t copy'));
+  }
+
+  // Click a highlight that's already on the page to change it or remove it.
+  const onPageClick = useCallback((e: React.MouseEvent<HTMLDivElement>, items: PageHl[]) => {
+    const s = window.getSelection();
+    if (s && !s.isCollapsed) return;
+    const box = e.currentTarget.getBoundingClientRect();
+    const fx = (e.clientX - box.left) / box.width;
+    const fy = (e.clientY - box.top) / box.height;
+    const hit = items.find((it) => fx >= it.x && fx <= it.x + it.w && fy >= it.y && fy <= it.y + it.h);
+    setMenu(hit ? { id: hit.id, x: e.clientX, y: e.clientY } : null);
+  }, []);
+
+  const menuItem = menu ? hl.items.find((h) => h.id === menu.id) ?? null : null;
+
   const total = pdf?.numPages ?? book.page_count;
 
   return (
@@ -384,9 +569,47 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
             </div>
           ) : (
             Array.from({ length: pdf.numPages }, (_, i) => (
-              <PdfPage key={i} pdf={pdf} pageNumber={i + 1} scale={scale} base={base} root={root} setEl={setEl} />
+              <PdfPage
+                key={i}
+                pdf={pdf}
+                pageNumber={i + 1}
+                scale={scale}
+                base={base}
+                root={root}
+                setEl={setEl}
+                items={byPage.get(i + 1) ?? NO_ITEMS}
+                onPageClick={onPageClick}
+              />
             ))
           )}
+        </div>
+      )}
+
+      {sel && <SelectionBar x={sel.x} y={sel.y} below={sel.below} onPick={pickColor} onCopy={() => copyText(sel.text)} />}
+      {menu && menuItem && (
+        <HighlightMenu
+          x={menu.x}
+          y={menu.y}
+          color={menuItem.color}
+          onColor={(c) => hl.recolor(menuItem.id, c)}
+          onCopy={() => {
+            copyText(menuItem.text);
+            setMenu(null);
+          }}
+          onDelete={() => {
+            hl.remove(menuItem.id);
+            setMenu(null);
+          }}
+          onClose={() => setMenu(null)}
+        />
+      )}
+      {toast && (
+        <div
+          className="pop !min-w-0 !px-4 !py-2.5 text-[13px] font-medium"
+          style={{ left: '50%', bottom: 28, top: 'auto', transform: 'translateX(-50%)' }}
+          role="status"
+        >
+          {toast}
         </div>
       )}
     </div>

@@ -162,10 +162,11 @@ export default function BookCard({ book, coverUrl, index, animateIn, onOpen, onR
     </motion.div>
   );
 }
-
 // Shown in the grid while a book is being added (or if adding it failed).
 export function UploadCard({ job, onDismiss }: { job: UploadJob; onDismiss: () => void }) {
   const failed = job.status === 'error';
+  const uploading = job.phase === 'uploading';
+  const pct = Math.round(job.progress * 100);
   return (
     <div>
       <div
@@ -186,12 +187,16 @@ export function UploadCard({ job, onDismiss }: { job: UploadJob; onDismiss: () =
       <div className="mt-3 flex items-start gap-1">
         <div className="min-w-0 flex-1">
           <div className="line-clamp-2 text-[13.5px] font-semibold leading-snug">{job.name.replace(/\.pdf$/i, '')}</div>
-          <div className="mt-0.5 text-[12px]" style={{ color: 'var(--text-faint)' }}>
-            {failed ? 'Couldn’t add this book' : `Adding, ${formatSize(job.size)}`}
+          <div className="tnum mt-0.5 text-[12px]" style={{ color: 'var(--text-faint)' }}>
+            {failed
+              ? 'Couldn’t add this book'
+              : uploading
+              ? `Uploading ${pct}%, ${formatSize(job.size)}`
+              : `Preparing, ${formatSize(job.size)}`}
           </div>
           {!failed && (
-            <div className="progress indeterminate mt-2">
-              <span />
+            <div className={`progress mt-2 ${uploading ? '' : 'indeterminate'}`}>
+              <span style={uploading ? { width: `${pct}%` } : undefined} />
             </div>
           )}
         </div>

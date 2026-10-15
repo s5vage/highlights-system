@@ -4,16 +4,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Book } from '@/lib/types';
 import { readPdfMeta } from './pdf';
-import { formatSize, titleFromFilename } from './helpers';
+import { formatSize, parseFilename } from './helpers';
+import { R2NotConfigured, putWithProgress, r2 } from './r2';
 
-export const BUCKET = 'books';
-const MAX_BYTES = 50 * 1024 * 1024; // the Supabase free plan limit per file
+export const BUCKET = 'books'; // Supabase bucket: covers, plus any books added before R2
+const MAX_R2_BYTES = 300 * 1024 * 1024;
+const MAX_SUPABASE_BYTES = 50 * 1024 * 1024; // the Supabase free plan limit per file
 
 export interface UploadJob {
   id: string;
   name: string;
   size: number;
   status: 'working' | 'error';
+  phase: 'preparing' | 'uploading';
+  progress: number; // 0 to 1, while uploading
   message?: string;
 }
 
@@ -25,7 +29,7 @@ function friendly(message: string): string {
     return 'Storage permissions are missing. Run the Library setup SQL in Supabase, then try again.';
   }
   if (/exceeded the maximum allowed size|payload too large|too large/i.test(message)) {
-    return 'That file is over your storage limit. The free plan allows up to 50 MB per file.';
+    return 'That file is over your storage limit.';
   }
   return message;
 }
@@ -62,7 +66,7 @@ export function useBooks() {
     };
   }, [load]);
 
-  // Covers live in a private bucket, so each one needs a signed link. One request signs them all.
+  // Covers live in a private Supabase bucket, so each one needs a signed link. One request signs them all.
   const coverKey = books.map((b) => b.cover_path ?? '').join('|');
   useEffect(() => {
     const withCover = books.filter((b) => b.cover_path);
@@ -95,75 +99,113 @@ export function useBooks() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coverKey]);
 
-  const processFile = useCallback(async (file: File) => {
-    const jobId = crypto.randomUUID();
-    setJobs((j) => [...j, { id: jobId, name: file.name, size: file.size, status: 'working' }]);
-    const fail = (message: string) =>
-      setJobs((j) => j.map((x) => (x.id === jobId ? { ...x, status: 'error', message } : x)));
-
-    try {
-      if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
-        throw new Error('Only PDF files can be added.');
-      }
-      if (file.size > MAX_BYTES) {
-        throw new Error(`This file is ${formatSize(file.size)}. The free plan allows up to 50 MB per file.`);
-      }
-
-      const id = crypto.randomUUID();
-      const filePath = `${id}.pdf`;
-      const coverPath = `covers/${id}.jpg`;
-
-      let meta;
-      try {
-        meta = await readPdfMeta(file);
-      } catch {
-        throw new Error('This PDF couldn’t be opened. It may be damaged or password-protected.');
-      }
-
-      let coverUploaded = false;
-      if (meta.cover) {
-        const res = await supabase.storage.from(BUCKET).upload(coverPath, meta.cover, { contentType: 'image/jpeg' });
-        coverUploaded = !res.error;
-      }
-
-      const up = await supabase.storage.from(BUCKET).upload(filePath, file, { contentType: 'application/pdf' });
-      if (up.error) {
-        if (coverUploaded) await supabase.storage.from(BUCKET).remove([coverPath]);
-        throw new Error(friendly(up.error.message));
-      }
-
-      const { data, error } = await supabase
-        .from('books')
-        .insert({
-          id,
-          title: titleFromFilename(file.name),
-          author: meta.author,
-          file_path: filePath,
-          cover_path: coverUploaded ? coverPath : null,
-          size_bytes: file.size,
-          page_count: meta.pageCount,
-          last_page: 1,
-        })
-        .select()
-        .single();
-
-      if (error) {
-        await supabase.storage.from(BUCKET).remove([filePath, ...(coverUploaded ? [coverPath] : [])]);
-        throw new Error(/relation .* does not exist/i.test(error.message)
-          ? 'The “books” table doesn’t exist yet. Run the Library setup SQL in Supabase, then try again.'
-          : error.message);
-      }
-
-      if (meta.cover && coverUploaded) {
-        const local = URL.createObjectURL(meta.cover);
-        setCovers((prev) => ({ ...prev, [id]: local }));
-      }
-      setBooks((prev) => [data as Book, ...prev]);
-      setJobs((j) => j.filter((x) => x.id !== jobId));
-    } catch (e) {
-      fail(e instanceof Error ? e.message : 'Something went wrong while adding this book.');
-    }
+  const patchJob = useCallback((jobId: string, patch: Partial<UploadJob>) => {
+    setJobs((j) => j.map((x) => (x.id === jobId ? { ...x, ...patch } : x)));
   }, []);
+
+  const processFile = useCallback(
+    async (file: File) => {
+      const jobId = crypto.randomUUID();
+      setJobs((j) => [
+        ...j,
+        { id: jobId, name: file.name, size: file.size, status: 'working', phase: 'preparing', progress: 0 },
+      ]);
+
+      try {
+        if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
+          throw new Error('Only PDF files can be added.');
+        }
+        if (file.size > MAX_R2_BYTES) {
+          throw new Error(`This file is ${formatSize(file.size)}. Books can be up to 300 MB each.`);
+        }
+
+        const id = crypto.randomUUID();
+        const filePath = `${id}.pdf`;
+        const coverPath = `covers/${id}.jpg`;
+
+        let meta;
+        try {
+          meta = await readPdfMeta(file);
+        } catch {
+          throw new Error('This PDF couldn’t be opened. It may be damaged or password-protected.');
+        }
+
+        let coverUploaded = false;
+        if (meta.cover) {
+          const res = await supabase.storage.from(BUCKET).upload(coverPath, meta.cover, { contentType: 'image/jpeg' });
+          coverUploaded = !res.error;
+        }
+        const removeCover = async () => {
+          if (coverUploaded) await supabase.storage.from(BUCKET).remove([coverPath]);
+        };
+
+        // The big PDF goes to Cloudflare R2. If R2 isn't set up yet, small books fall back to Supabase.
+        let storage: 'r2' | 'supabase' = 'r2';
+        try {
+          const { url } = await r2('put', id);
+          patchJob(jobId, { phase: 'uploading', progress: 0 });
+          await putWithProgress(url as string, file, (p) => patchJob(jobId, { progress: p }));
+        } catch (e) {
+          if (e instanceof R2NotConfigured && file.size <= MAX_SUPABASE_BYTES) {
+            storage = 'supabase';
+            patchJob(jobId, { phase: 'uploading', progress: 0 });
+            const up = await supabase.storage.from(BUCKET).upload(filePath, file, { contentType: 'application/pdf' });
+            if (up.error) {
+              await removeCover();
+              throw new Error(friendly(up.error.message));
+            }
+          } else {
+            await removeCover();
+            if (e instanceof R2NotConfigured) {
+              throw new Error(`${e.message} Until then, only books up to 50 MB can be added.`);
+            }
+            throw e;
+          }
+        }
+
+        const parsed = parseFilename(file.name);
+        const { data, error } = await supabase
+          .from('books')
+          .insert({
+            id,
+            title: parsed.title,
+            author: meta.author ?? parsed.author,
+            file_path: filePath,
+            cover_path: coverUploaded ? coverPath : null,
+            size_bytes: file.size,
+            page_count: meta.pageCount,
+            last_page: 1,
+            storage,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          if (storage === 'r2') await r2('delete', id).catch(() => null);
+          else await supabase.storage.from(BUCKET).remove([filePath]);
+          await removeCover();
+          throw new Error(
+            /relation .* does not exist|column .* does not exist/i.test(error.message)
+              ? 'The Library tables need updating. Run the Library setup SQL in Supabase, then try again.'
+              : error.message
+          );
+        }
+
+        if (meta.cover && coverUploaded) {
+          const local = URL.createObjectURL(meta.cover);
+          setCovers((prev) => ({ ...prev, [id]: local }));
+        }
+        setBooks((prev) => [data as Book, ...prev]);
+        setJobs((j) => j.filter((x) => x.id !== jobId));
+      } catch (e) {
+        patchJob(jobId, {
+          status: 'error',
+          message: e instanceof Error ? e.message : 'Something went wrong while adding this book.',
+        });
+      }
+    },
+    [patchJob]
+  );
 
   // Books are added one at a time so a big batch doesn't flood the connection.
   const addFiles = useCallback(
@@ -187,7 +229,12 @@ export function useBooks() {
   const deleteBook = useCallback(
     async (book: Book) => {
       setBooks((prev) => prev.filter((b) => b.id !== book.id));
-      await supabase.storage.from(BUCKET).remove([book.file_path, ...(book.cover_path ? [book.cover_path] : [])]);
+      if (book.storage === 'r2') {
+        await r2('delete', book.id).catch(() => null);
+        if (book.cover_path) await supabase.storage.from(BUCKET).remove([book.cover_path]);
+      } else {
+        await supabase.storage.from(BUCKET).remove([book.file_path, ...(book.cover_path ? [book.cover_path] : [])]);
+      }
       const { error } = await supabase.from('books').delete().eq('id', book.id);
       if (error) load();
     },
@@ -206,8 +253,13 @@ export function useBooks() {
     await supabase.from('books').update({ last_opened_at: now }).eq('id', id);
   }, []);
 
-  const getBookUrl = useCallback(async (path: string): Promise<string> => {
-    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 2 * 3600);
+  const getBookUrl = useCallback(async (book: Book): Promise<string> => {
+    if (book.storage === 'r2') {
+      const { url } = await r2('get', book.id);
+      if (!url) throw new Error('Couldn’t get a link to this book.');
+      return url;
+    }
+    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(book.file_path, 2 * 3600);
     if (error || !data) throw new Error(error?.message || 'Couldn’t get a link to this book.');
     return data.signedUrl;
   }, []);

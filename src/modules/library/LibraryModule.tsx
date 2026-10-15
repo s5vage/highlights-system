@@ -66,8 +66,12 @@ export default function LibraryModule() {
   const inProgress = books.filter((b) => isStarted(b) && !isFinished(b)).length;
   const open: Book | null = books.find((b) => b.id === openId) ?? null;
 
-  const openPath = open?.file_path;
-  const getUrl = useCallback(() => getBookUrl(openPath as string), [getBookUrl, openPath]);
+  // Keyed by id only, so saving your reading progress never re-opens the book.
+  const openRef = useRef<Book | null>(open);
+  openRef.current = open;
+  const openKey = open?.id;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const getUrl = useCallback(() => getBookUrl(openRef.current as Book), [getBookUrl, openKey]);
 
   function handleFiles(files: File[]) {
     if (files.length > 0) addFiles(files);

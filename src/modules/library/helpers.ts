@@ -28,3 +28,29 @@ export function hueForTitle(title: string): string {
   for (let i = 0; i < title.length; i++) h = (h * 31 + title.charCodeAt(i)) >>> 0;
   return COVER_HUES[h % COVER_HUES.length];
 }
+
+// Turns a downloaded file name into a clean title (and the author, when the
+// name follows the common "Title (Author) (Source)" pattern).
+export function parseFilename(name: string): { title: string; author: string | null } {
+  let t = name.replace(/\.pdf$/i, '').replace(/_+/g, ' ');
+  t = t.replace(/\s*\((?:z-?library|z-lib(?:\.org)?|anna.?s archive|libgen[^)]*|pdfdrive[^)]*)\)\s*/gi, ' ');
+  let author: string | null = null;
+  const m = t.match(/\s*\(([^()]{3,60})\)\s*$/);
+  if (m && m.index !== undefined && !/edition|\bed\.|vol|volume|\d/i.test(m[1])) {
+    author = m[1].trim();
+    t = t.slice(0, m.index);
+  }
+  t = t.replace(/\s+/g, ' ').trim();
+  return { title: t || 'Untitled book', author };
+}
+
+// A short tag for highlights saved from a book, e.g. "The Rules of Money".
+export function bookTag(title: string): string {
+  let t = title.replace(/\([^)]*\)|\[[^\]]*\]/g, ' ');
+  t = t.split(/\s[-–—:]\s|:\s/)[0].replace(/\s+/g, ' ').trim();
+  if (t.length > 40) {
+    t = t.slice(0, 40);
+    t = t.slice(0, t.lastIndexOf(' ') > 18 ? t.lastIndexOf(' ') : 40).trim();
+  }
+  return t || 'Book';
+}
