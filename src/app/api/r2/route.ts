@@ -3,25 +3,34 @@ import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } fro
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 // Hands the browser short-lived links to upload, read, or delete a book in
-// Cloudflare R2. The secret keys live only here, on the server. They are
-// never sent to the browser.
+// Backblaze B2 (an S3-compatible bucket). The secret key lives only here, on
+// the server. It is never sent to the browser.
+//
+// (The folder is still called "r2" from an earlier version of this app. The
+// name doesn't matter, it just means "the cloud bucket".)
 
 export const dynamic = 'force-dynamic';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function config() {
-  const { R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET } = process.env;
-  if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET) return null;
+  const { B2_ENDPOINT, B2_KEY_ID, B2_APP_KEY, B2_BUCKET } = process.env;
+  if (!B2_ENDPOINT || !B2_KEY_ID || !B2_APP_KEY || !B2_BUCKET) return null;
+
+  // Accept "s3.us-west-004.backblazeb2.com" with or without https://
+  const host = B2_ENDPOINT.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  const region = host.split('.')[1] || 'us-west-004';
+
   const s3 = new S3Client({
-    region: 'auto',
-    endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-    credentials: { accessKeyId: R2_ACCESS_KEY_ID, secretAccessKey: R2_SECRET_ACCESS_KEY },
-    // Newer SDK versions add checksum headers that R2 rejects on presigned links.
+    region,
+    endpoint: `https://${host}`,
+    forcePathStyle: true,
+    credentials: { accessKeyId: B2_KEY_ID.trim(), secretAccessKey: B2_APP_KEY.trim() },
+    // Newer SDK versions add checksum headers that S3-compatible stores reject on presigned links.
     requestChecksumCalculation: 'WHEN_REQUIRED',
     responseChecksumValidation: 'WHEN_REQUIRED',
   });
-  return { s3, bucket: R2_BUCKET };
+  return { s3, bucket: B2_BUCKET.trim() };
 }
 
 export async function POST(req: Request) {
@@ -70,7 +79,7 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ error: 'bad_action' }, { status: 400 });
   } catch (e) {
-    console.error('R2 error', e);
-    return NextResponse.json({ error: 'r2_failed' }, { status: 502 });
+    console.error('Cloud storage error', e);
+    return NextResponse.json({ error: 'storage_failed' }, { status: 502 });
   }
 }

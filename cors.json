@@ -1,0 +1,10 @@
+[
+  {
+    "corsRuleName": "highlights-app",
+    "allowedOrigins": ["http://localhost:3000", "https://highlights-system.vercel.app"],
+    "allowedOperations": ["s3_get", "s3_head", "s3_put"],
+    "allowedHeaders": ["content-type", "range", "authorization"],
+    "exposeHeaders": ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
+    "maxAgeSeconds": 3600
+  }
+]

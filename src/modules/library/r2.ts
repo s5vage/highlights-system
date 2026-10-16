@@ -1,10 +1,10 @@
 export class R2NotConfigured extends Error {
   constructor() {
-    super('Cloud storage isn’t set up yet. Add the R2 keys to .env.local (and to Vercel), then try again.');
+    super('Cloud storage isn’t set up yet. Add the storage keys to .env.local (and to Vercel), then try again.');
   }
 }
 
-// Asks our own server for a short-lived link to upload, read, or delete a book in R2.
+// Asks our own server for a short-lived link to upload, read, or delete a book in cloud storage.
 export async function r2(action: 'put' | 'get' | 'delete', id: string): Promise<{ url?: string }> {
   const res = await fetch('/api/r2', {
     method: 'POST',
@@ -19,7 +19,7 @@ export async function r2(action: 'put' | 'get' | 'delete', id: string): Promise<
   return res.json();
 }
 
-// Uploads straight from the browser to R2, reporting real progress.
+// Uploads straight from the browser to cloud storage, reporting real progress.
 export function putWithProgress(url: string, file: File, onProgress: (fraction: number) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -31,9 +31,9 @@ export function putWithProgress(url: string, file: File, onProgress: (fraction: 
     xhr.onload = () =>
       xhr.status >= 200 && xhr.status < 300
         ? resolve()
-        : reject(new Error(`The upload was refused by cloud storage (${xhr.status}). Check your R2 keys.`));
+        : reject(new Error(`The upload was refused by cloud storage (${xhr.status}). Check your Backblaze keys.`));
     xhr.onerror = () =>
-      reject(new Error('The upload was blocked. Check that your R2 bucket’s CORS settings allow this site.'));
+      reject(new Error('The upload was blocked. Check that your Backblaze bucket’s CORS rules allow this site.'));
     xhr.send(file);
   });
 }
