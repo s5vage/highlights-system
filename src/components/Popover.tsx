@@ -8,11 +8,17 @@ interface Props {
   trigger: (api: { open: boolean; toggle: () => void }) => ReactNode;
   children: (close: () => void) => ReactNode;
   align?: 'left' | 'right';
+    closeOnScroll?: boolean;
 }
 
 // A small floating menu. It renders in a portal with fixed positioning so it
 // is never clipped by a scrolling toolbar or a card with overflow hidden.
-export default function Popover({ trigger, children, align = 'left' }: Props) {
+export default function Popover({
+  trigger,
+  children,
+  align = 'left',
+  closeOnScroll = true,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left?: number; right?: number }>({ top: 0 });
   const triggerRef = useRef<HTMLDivElement>(null);
@@ -45,14 +51,14 @@ export default function Popover({ trigger, children, align = 'left' }: Props) {
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
     window.addEventListener('resize', close);
-    window.addEventListener('scroll', close, true);
+    if (closeOnScroll) window.addEventListener('scroll', close, true);
     return () => {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
       window.removeEventListener('resize', close);
       window.removeEventListener('scroll', close, true);
     };
-  }, [open]);
+  }, [open, closeOnScroll]);
 
   return (
     <>

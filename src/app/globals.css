@@ -997,3 +997,52 @@ html[data-theme='light'] .pop {
 .hl-swatch:hover {
   transform: scale(1.14);
 }
+
+/* Spreads and reading themes */
+.pdf-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+.pdf-row .pdf-page {
+  margin: 0;
+}
+.pdf-page[data-side='left'] {
+  border-radius: 3px 0 0 3px;
+}
+.pdf-page[data-side='right'] {
+  border-radius: 0 3px 3px 0;
+}
+.pdf-page[data-side='left']::after,
+.pdf-page[data-side='right']::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 9%;
+  pointer-events: none;
+}
+.pdf-page[data-side='left']::after {
+  right: 0;
+  background: linear-gradient(270deg, rgb(0 0 0 / 0.14), transparent);
+}
+.pdf-page[data-side='right']::after {
+  left: 0;
+  background: linear-gradient(90deg, rgb(0 0 0 / 0.14), transparent);
+}
+.pdf-sepia .pdf-page {
+  background: #efe4cb;
+}
+.pdf-sepia .pdf-page canvas {
+  filter: sepia(0.42) saturate(1.05) contrast(0.96) brightness(0.98);
+}
+.pdf-dim .pdf-page {
+  background: #3a3a3c;
+}
+.pdf-dim .pdf-page canvas {
+  filter: brightness(0.66) contrast(1.06);
+}
+.pdf-dim,
+.pdf-night {
+  background: #0e0e10 !important;
+}

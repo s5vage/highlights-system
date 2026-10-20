@@ -10,15 +10,29 @@ import { Book } from '@/lib/types';
 import { useBooks } from './useBooks';
 import BookCard, { UploadCard } from './BookCard';
 import PdfReader from './PdfReader';
-import { isFinished, isStarted } from './helpers';
+import { isFinished, isStarted, progressOf } from './helpers';
 
-type SortMode = 'recent' | 'title' | 'added';
+type SortMode = 'added' | 'title' | 'progress';
 
 const SORT_OPTIONS: { value: SortMode; label: string }[] = [
-  { value: 'recent', label: 'Recent' },
-  { value: 'title', label: 'Title' },
   { value: 'added', label: 'Added' },
+  { value: 'title', label: 'Title' },
+  { value: 'progress', label: 'Progress' },
 ];
+
+// Books you opened within this many days appear in "Continue reading".
+const RECENT_DAYS = 3;
+
+function SectionHeader({ title, note }: { title: string; note: string }) {
+  return (
+    <div className="mb-5 flex items-baseline gap-3">
+      <h2 className="text-[19px] font-semibold tracking-[-0.016em]">{title}</h2>
+      <span className="text-[13px]" style={{ color: 'var(--text-faint)' }}>
+        {note}
+      </span>
+    </div>
+  );
+}
 
 export default function LibraryModule() {
   const {
@@ -38,7 +52,7 @@ export default function LibraryModule() {
   } = useBooks();
 
   const [query, setQuery] = useState('');
-  const [sort, setSort] = useState<SortMode>('recent');
+  const [sort, setSort] = useState<SortMode>('added');
   const [openId, setOpenId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [intro, setIntro] = useState(true);
@@ -57,11 +71,26 @@ export default function LibraryModule() {
       ? books.filter((b) => b.title.toLowerCase().includes(q) || (b.author ?? '').toLowerCase().includes(q))
       : [...books];
     const time = (s: string | null) => (s ? new Date(s).getTime() : 0);
-    if (sort === 'title') list.sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }));
-    else if (sort === 'added') list.sort((a, b) => time(b.created_at) - time(a.created_at));
-    else list.sort((a, b) => time(b.last_opened_at ?? b.created_at) - time(a.last_opened_at ?? a.created_at));
+    const byTitle = (a: Book, b: Book) => a.title.localeCompare(b.title, undefined, { numeric: true });
+    if (sort === 'title') list.sort(byTitle);
+    else if (sort === 'progress') list.sort((a, b) => progressOf(b) - progressOf(a) || byTitle(a, b));
+    else list.sort((a, b) => time(b.created_at) - time(a.created_at));
     return list;
   }, [books, query, sort]);
+
+  // Books you've opened lately get their own shelf, so reading never gets lost in a big library.
+  const searching = query.trim().length > 0;
+  const recent = useMemo(() => {
+    if (searching) return [];
+    const cutoff = Date.now() - RECENT_DAYS * 86400000;
+    return books
+      .filter((b) => b.last_opened_at && new Date(b.last_opened_at).getTime() > cutoff)
+      .sort((a, b) => new Date(b.last_opened_at as string).getTime() - new Date(a.last_opened_at as string).getTime());
+  }, [books, searching]);
+  const rest = useMemo(() => {
+    const ids = new Set(recent.map((b) => b.id));
+    return visible.filter((b) => !ids.has(b.id));
+  }, [visible, recent]);
 
   const inProgress = books.filter((b) => isStarted(b) && !isFinished(b)).length;
   const open: Book | null = books.find((b) => b.id === openId) ?? null;
@@ -249,22 +278,51 @@ export default function LibraryModule() {
                 }
               />
             ) : (
-              <div className="book-grid">
-                {jobs.map((j) => (
-                  <UploadCard key={j.id} job={j} onDismiss={() => dismissJob(j.id)} />
-                ))}
-                {visible.map((b, i) => (
-                  <BookCard
-                    key={b.id}
-                    book={b}
-                    coverUrl={covers[b.id]}
-                    index={i}
-                    animateIn={intro}
-                    onOpen={() => openBook(b)}
-                    onRename={(title) => renameBook(b.id, title)}
-                    onDelete={() => deleteBook(b)}
-                  />
-                ))}
+              <div>
+                {recent.length > 0 && (
+                  <section className="mb-14">
+                    <SectionHeader title="Continue reading" note={`Opened in the last ${RECENT_DAYS} days`} />
+                    <div className="book-grid">
+                      {recent.map((b, i) => (
+                        <BookCard
+                          key={b.id}
+                          book={b}
+                          coverUrl={covers[b.id]}
+                          index={i}
+                          animateIn={intro}
+                          onOpen={() => openBook(b)}
+                          onRename={(title) => renameBook(b.id, title)}
+                          onDelete={() => deleteBook(b)}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {(rest.length > 0 || jobs.length > 0) && (
+                  <section>
+                    {recent.length > 0 && (
+                      <SectionHeader title="All books" note={`${rest.length} ${rest.length === 1 ? 'book' : 'books'}`} />
+                    )}
+                    <div className="book-grid">
+                      {jobs.map((j) => (
+                        <UploadCard key={j.id} job={j} onDismiss={() => dismissJob(j.id)} />
+                      ))}
+                      {rest.map((b, i) => (
+                        <BookCard
+                          key={b.id}
+                          book={b}
+                          coverUrl={covers[b.id]}
+                          index={i + recent.length}
+                          animateIn={intro}
+                          onOpen={() => openBook(b)}
+                          onRename={(title) => renameBook(b.id, title)}
+                          onDelete={() => deleteBook(b)}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                )}
               </div>
             )}
           </div>

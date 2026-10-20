@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
-import { ChevronLeft, Minus, Moon, Plus, Sun, TriangleAlert } from 'lucide-react';
+import { ChevronLeft, Minus, Plus, SlidersHorizontal, TriangleAlert } from 'lucide-react';
+import Popover from '@/components/Popover';
+import SegmentedControl from '@/components/SegmentedControl';
 import StateMessage from '@/components/StateMessage';
 import { Book, HighlightColor, HlRect } from '@/lib/types';
 import { loadPdfjs } from './pdf';
@@ -21,7 +23,21 @@ interface Size {
   h: number;
 }
 
-const NIGHT_KEY = 'lib_night';
+type Theme = 'day' | 'sepia' | 'dim' | 'night';
+type LayoutPref = 'auto' | 'single' | 'spread';
+type FitPref = 'auto' | 'width' | 'page';
+
+const THEME_KEY = 'lib_theme';
+const LAYOUT_KEY = 'lib_layout';
+const FIT_KEY = 'lib_fit';
+const LEGACY_NIGHT_KEY = 'lib_night';
+
+const THEMES: { id: Theme; label: string; bg: string; ink: string }[] = [
+  { id: 'day', label: 'Day', bg: '#ffffff', ink: '#1d1d1f' },
+  { id: 'sepia', label: 'Sepia', bg: '#f1e6cc', ink: '#4a3b22' },
+  { id: 'dim', label: 'Dim', bg: '#b4b4b6', ink: '#2a2a2c' },
+  { id: 'night', label: 'Night', bg: '#161618', ink: '#e8e8ea' },
+];
 
 interface PageHl {
   id: string;
@@ -73,6 +89,7 @@ function PdfPage({
   scale,
   base,
   root,
+  side,
   setEl,
   items,
   onPageClick,
@@ -82,6 +99,7 @@ function PdfPage({
   scale: number;
   base: Size;
   root: HTMLElement | null;
+  side: 'single' | 'left' | 'right';
   setEl: (n: number, el: HTMLDivElement | null) => void;
   items: PageHl[];
   onPageClick: (e: React.MouseEvent<HTMLDivElement>, items: PageHl[]) => void;
@@ -89,7 +107,7 @@ function PdfPage({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
-  const [near, setNear] = useState(pageNumber <= 2);
+  const [near, setNear] = useState(pageNumber <= 3);
   const [dims, setDims] = useState<Size | null>(null);
 
   // Only pages close to the screen are drawn. Far-away pages are blank boxes.
@@ -166,6 +184,7 @@ function PdfPage({
       }}
       className="pdf-page"
       data-page={pageNumber}
+      data-side={side}
       onClick={(e) => onPageClick(e, items)}
       style={
         {
@@ -204,21 +223,32 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
   const [attempt, setAttempt] = useState(0);
   const [base, setBase] = useState<Size>({ w: 612, h: 792 });
   const [width, setWidth] = useState(0);
+  const [height, setHeight] = useState(0);
   const [zoom, setZoom] = useState(1);
-  const [night, setNight] = useState(false);
+  const [theme, setTheme] = useState<Theme>('day');
+  const [layoutPref, setLayoutPref] = useState<LayoutPref>('auto');
+  const [fitPref, setFitPref] = useState<FitPref>('auto');
   const [current, setCurrent] = useState(Math.max(1, book.last_page));
   const [pageInput, setPageInput] = useState<string | null>(null);
 
   const restored = useRef(false);
   const keepRatio = useRef<number | null>(null);
+  const pendingPage = useRef<number | null>(null);
   const savedPage = useRef(book.last_page);
   const currentRef = useRef(current);
   currentRef.current = current;
   const onProgressRef = useRef(onProgress);
   onProgressRef.current = onProgress;
 
+  // Remember how you like to read.
   useEffect(() => {
-    setNight(localStorage.getItem(NIGHT_KEY) === '1');
+    const t = localStorage.getItem(THEME_KEY) as Theme | null;
+    if (t && THEMES.some((x) => x.id === t)) setTheme(t);
+    else if (localStorage.getItem(LEGACY_NIGHT_KEY) === '1') setTheme('night');
+    const l = localStorage.getItem(LAYOUT_KEY);
+    if (l === 'single' || l === 'spread') setLayoutPref(l);
+    const f = localStorage.getItem(FIT_KEY);
+    if (f === 'width' || f === 'page') setFitPref(f);
   }, []);
 
   // Open the document.
@@ -263,16 +293,37 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
     const el = scrollRef.current;
     if (!el) return;
     setRoot(el);
-    const measure = () => setWidth(el.clientWidth);
+    const measure = () => {
+      setWidth(el.clientWidth);
+      setHeight(el.clientHeight);
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
   }, [status]);
 
+  // Layout: one page, or two side by side like an open book (big screens).
   const pad = width < 640 ? 12 : 28;
-  const fit = width > 0 ? Math.min(width - pad * 2, 940) / base.w : 1;
+  const spread = layoutPref === 'spread' || (layoutPref === 'auto' && width >= 1100);
+  const fitMode: 'width' | 'page' = fitPref === 'auto' ? (spread ? 'page' : 'width') : fitPref;
+  const perRow = spread ? 2 : 1;
+  const widthScale = Math.min(Math.max(120, width - pad * 2), spread ? 1560 : 940) / (base.w * perRow);
+  const heightScale = Math.max(120, height - pad * 2) / base.h;
+  const fit = width > 0 ? (fitMode === 'page' ? Math.min(widthScale, heightScale) : widthScale) : 1;
   const scale = Math.max(0.2, fit * zoom);
+
+  const rows = useMemo(() => {
+    const n = pdf?.numPages ?? 0;
+    const out: number[][] = [];
+    if (spread) {
+      if (n >= 1) out.push([1]);
+      for (let p = 2; p <= n; p += 2) out.push(p + 1 <= n ? [p, p + 1] : [p]);
+    } else {
+      for (let p = 1; p <= n; p++) out.push([p]);
+    }
+    return out;
+  }, [pdf, spread]);
 
   // Come back to where you left off.
   useLayoutEffect(() => {
@@ -292,10 +343,35 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
     }
   }, [scale]);
 
+  // Keep your page when switching between one page and two, or between fit modes.
+  useLayoutEffect(() => {
+    if (pendingPage.current === null) return;
+    const n = pendingPage.current;
+    pendingPage.current = null;
+    const el = scrollRef.current;
+    const target = pageEls.current[n - 1];
+    if (el && target) el.scrollTop = target.offsetTop - 14;
+  }, [spread, fitMode]);
+
   function changeZoom(next: number) {
     const el = scrollRef.current;
     if (el) keepRatio.current = el.scrollTop / Math.max(1, el.scrollHeight);
     setZoom(Math.min(3, Math.max(0.5, Math.round(next * 100) / 100)));
+  }
+
+  function chooseTheme(t: Theme) {
+    setTheme(t);
+    localStorage.setItem(THEME_KEY, t);
+  }
+  function chooseLayout(v: 'single' | 'spread') {
+    pendingPage.current = currentRef.current;
+    setLayoutPref(v);
+    localStorage.setItem(LAYOUT_KEY, v);
+  }
+  function chooseFit(v: 'width' | 'page') {
+    pendingPage.current = currentRef.current;
+    setFitPref(v);
+    localStorage.setItem(FIT_KEY, v);
   }
 
   // Work out which page is on screen.
@@ -342,13 +418,6 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
     const target = pageEls.current[page - 1];
     if (el && target) el.scrollTo({ top: target.offsetTop - 14 });
     setCurrent(page);
-  }
-
-  function toggleNight() {
-    setNight((n) => {
-      localStorage.setItem(NIGHT_KEY, n ? '0' : '1');
-      return !n;
-    });
   }
 
   const setEl = useCallback((n: number, el: HTMLDivElement | null) => {
@@ -478,11 +547,10 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
   }, []);
 
   const menuItem = menu ? hl.items.find((h) => h.id === menu.id) ?? null : null;
-
   const total = pdf?.numPages ?? book.page_count;
 
   return (
-    <div className={`flex h-full flex-col ${night ? 'pdf-night' : ''}`} style={{ background: 'var(--bg)' }}>
+    <div className={`flex h-full flex-col ${theme === 'day' ? '' : `pdf-${theme}`}`} style={{ background: 'var(--bg)' }}>
       <div className="hl-bar flex h-[52px] shrink-0 items-center gap-1.5 px-2.5">
         <button
           type="button"
@@ -530,7 +598,7 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
           <button
             type="button"
             className="tool tnum !w-auto px-1.5 text-[12px] font-medium max-sm:hidden"
-            title="Fit to width"
+            title="Reset zoom"
             onClick={() => changeZoom(1)}
           >
             {Math.round(zoom * 100)}%
@@ -539,15 +607,81 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
             <Plus size={17} strokeWidth={2} />
           </button>
         </div>
-        <button
-          type="button"
-          className="tool"
-          aria-label={night ? 'Use day reading mode' : 'Use night reading mode'}
-          title={night ? 'Day mode' : 'Night mode'}
-          onClick={toggleNight}
+
+        <Popover
+          align="right"
+          closeOnScroll={false}
+          trigger={({ open, toggle }) => (
+            <button
+              type="button"
+              className="tool"
+              aria-label="Appearance"
+              title="Appearance"
+              aria-expanded={open}
+              data-active={open ? 'true' : 'false'}
+              onClick={toggle}
+            >
+              <SlidersHorizontal size={17} strokeWidth={2} />
+            </button>
+          )}
         >
-          {night ? <Sun size={17} strokeWidth={2} /> : <Moon size={17} strokeWidth={2} />}
-        </button>
+          {() => (
+            <div className="w-[272px] p-2">
+              <div className="px-1 pb-2 text-[12px] font-semibold" style={{ color: 'var(--text-faint)' }}>
+                Theme
+              </div>
+              <div className="grid grid-cols-4 gap-1.5">
+                {THEMES.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    aria-label={`${t.label} theme`}
+                    aria-pressed={theme === t.id}
+                    onClick={() => chooseTheme(t.id)}
+                    className="flex flex-col items-center gap-1.5 rounded-xl px-1 py-2"
+                    style={{ background: theme === t.id ? 'var(--fill-strong)' : 'transparent' }}
+                  >
+                    <span
+                      className="grid h-10 w-10 place-items-center rounded-full text-[13px] font-semibold"
+                      style={{ background: t.bg, color: t.ink, boxShadow: 'inset 0 0 0 1px rgb(0 0 0 / 0.16)' }}
+                    >
+                      Aa
+                    </span>
+                    <span className="text-[11.5px]" style={{ color: 'var(--text-dim)' }}>
+                      {t.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="px-1 pb-2 pt-4 text-[12px] font-semibold" style={{ color: 'var(--text-faint)' }}>
+                Layout
+              </div>
+              <SegmentedControl
+                label="Page layout"
+                options={[
+                  { value: 'single', label: 'Single page' },
+                  { value: 'spread', label: 'Two pages' },
+                ]}
+                value={spread ? 'spread' : 'single'}
+                onChange={chooseLayout}
+              />
+
+              <div className="px-1 pb-2 pt-4 text-[12px] font-semibold" style={{ color: 'var(--text-faint)' }}>
+                Fit
+              </div>
+              <SegmentedControl
+                label="Page fit"
+                options={[
+                  { value: 'width', label: 'Width' },
+                  { value: 'page', label: 'Whole page' },
+                ]}
+                value={fitMode}
+                onChange={chooseFit}
+              />
+            </div>
+          )}
+        </Popover>
       </div>
 
       {status === 'error' ? (
@@ -568,18 +702,26 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
               <div className="skeleton" style={{ height: 'min(70vh, 640px)', borderRadius: 4 }} aria-busy="true" />
             </div>
           ) : (
-            Array.from({ length: pdf.numPages }, (_, i) => (
-              <PdfPage
-                key={i}
-                pdf={pdf}
-                pageNumber={i + 1}
-                scale={scale}
-                base={base}
-                root={root}
-                setEl={setEl}
-                items={byPage.get(i + 1) ?? NO_ITEMS}
-                onPageClick={onPageClick}
-              />
+            rows.map((row) => (
+              <div key={row[0]} className="pdf-row" data-spread={spread && row.length === 2 ? 'true' : undefined}>
+                {spread && row.length === 1 && row[0] === 1 && (
+                  <div aria-hidden style={{ width: base.w * scale, flexShrink: 0 }} />
+                )}
+                {row.map((n, i) => (
+                  <PdfPage
+                    key={n}
+                    pdf={pdf}
+                    pageNumber={n}
+                    scale={scale}
+                    base={base}
+                    root={root}
+                    side={!spread ? 'single' : row.length === 2 ? (i === 0 ? 'left' : 'right') : row[0] === 1 ? 'right' : 'left'}
+                    setEl={setEl}
+                    items={byPage.get(n) ?? NO_ITEMS}
+                    onPageClick={onPageClick}
+                  />
+                ))}
+              </div>
             ))
           )}
         </div>
