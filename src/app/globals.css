@@ -1046,3 +1046,34 @@ html[data-theme='light'] .pop {
 .pdf-night {
   background: #0e0e10 !important;
 }
+
+/* Search matches, and the flash when you jump to a highlight */
+.pdf-find {
+  position: absolute;
+  border-radius: 3px;
+  background: rgb(255 190 0 / 0.38);
+  box-shadow: inset 0 0 0 1px rgb(255 150 0 / 0.5);
+  mix-blend-mode: multiply;
+}
+.pdf-find.is-active {
+  background: rgb(255 120 0 / 0.5);
+  box-shadow: 0 0 0 2px rgb(255 120 0 / 0.9);
+}
+.pdf-night .pdf-find {
+  mix-blend-mode: normal;
+}
+@keyframes hl-flash {
+  0%,
+  100% {
+    filter: none;
+  }
+  30%,
+  70% {
+    filter: brightness(0.7) saturate(1.8);
+  }
+}
+.pdf-hl[data-flash='true'] {
+  animation: hl-flash 1.6s ease-in-out;
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 1px;
+}

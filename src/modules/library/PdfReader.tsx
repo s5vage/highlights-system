@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
-import { ChevronLeft, Minus, Plus, SlidersHorizontal, TriangleAlert } from 'lucide-react';
+import { ChevronLeft, Minus, PanelLeft, Plus, SlidersHorizontal, TriangleAlert } from 'lucide-react';
 import Popover from '@/components/Popover';
 import SegmentedControl from '@/components/SegmentedControl';
 import StateMessage from '@/components/StateMessage';
-import { Book, HighlightColor, HlRect } from '@/lib/types';
+import { Book, BookHighlight, HighlightColor, HlRect } from '@/lib/types';
 import { loadPdfjs } from './pdf';
 import { HighlightMenu, SelectionBar } from './HighlightTools';
 import { useBookHighlights } from './useBookHighlights';
+import ReaderPanel, { PanelTab } from './ReaderPanel';
+import { useBookSearch } from './useBookSearch';
 
 interface Props {
   book: Book;
@@ -46,7 +48,19 @@ interface PageHl {
   y: number;
   w: number;
   h: number;
+  flash: boolean;
 }
+
+// A match for the text you searched for, as fractions of the page. `m` is which match on the page it is.
+interface FindBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  m: number;
+}
+
+const PANEL_W = 320;
 
 interface SelectionState {
   x: number;
@@ -83,6 +97,62 @@ function mergeLineRects(rs: DOMRect[]) {
   return out;
 }
 
+// Finds every match of the search pattern in a rendered page's text layer and
+// returns where it sits on the page.
+function computeFindBoxes(layer: HTMLElement, wrap: HTMLElement, source: RegExp): FindBox[] {
+  const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT);
+  const nodes: { node: Text; start: number }[] = [];
+  let joined = '';
+  let n: Node | null;
+  while ((n = walker.nextNode())) {
+    const t = n as Text;
+    if (!t.data) continue;
+    nodes.push({ node: t, start: joined.length });
+    joined += t.data + ' ';
+  }
+  if (!joined) return [];
+
+  const locate = (pos: number) => {
+    let lo = 0;
+    let hi = nodes.length - 1;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (nodes[mid].start <= pos) lo = mid;
+      else hi = mid - 1;
+    }
+    return { node: nodes[lo].node, offset: Math.min(pos - nodes[lo].start, nodes[lo].node.data.length) };
+  };
+
+  const re = new RegExp(source.source, 'gi');
+  const box = wrap.getBoundingClientRect();
+  const out: FindBox[] = [];
+  let count = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(joined)) && count < 300) {
+    if (!m[0]) {
+      re.lastIndex++;
+      continue;
+    }
+    const a = locate(m.index);
+    const b = locate(m.index + m[0].length - 1);
+    const range = document.createRange();
+    range.setStart(a.node, a.offset);
+    range.setEnd(b.node, Math.min(b.offset + 1, b.node.data.length));
+    const rects = mergeLineRects(Array.from(range.getClientRects()).filter((r) => r.width > 1 && r.height > 1));
+    rects.forEach((r) =>
+      out.push({
+        x: (r.left - box.left) / box.width,
+        y: (r.top - box.top) / box.height,
+        w: (r.right - r.left) / box.width,
+        h: (r.bottom - r.top) / box.height,
+        m: count,
+      })
+    );
+    count++;
+  }
+  return out;
+}
+
 function PdfPage({
   pdf,
   pageNumber,
@@ -93,6 +163,9 @@ function PdfPage({
   setEl,
   items,
   onPageClick,
+  findRe,
+  activeM,
+  onFindBoxes,
 }: {
   pdf: PDFDocumentProxy;
   pageNumber: number;
@@ -103,12 +176,17 @@ function PdfPage({
   setEl: (n: number, el: HTMLDivElement | null) => void;
   items: PageHl[];
   onPageClick: (e: React.MouseEvent<HTMLDivElement>, items: PageHl[]) => void;
+  findRe: RegExp | null;
+  activeM: number | null;
+  onFindBoxes: (page: number, boxes: FindBox[]) => void;
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
   const [near, setNear] = useState(pageNumber <= 3);
   const [dims, setDims] = useState<Size | null>(null);
+  const [renderTick, setRenderTick] = useState(0);
+  const [finds, setFinds] = useState<FindBox[]>([]);
 
   // Only pages close to the screen are drawn. Far-away pages are blank boxes.
   useEffect(() => {
@@ -160,6 +238,7 @@ function PdfPage({
         viewport,
       });
       await layer.render();
+      if (!cancelled) setRenderTick((t) => t + 1);
     })().catch((err) => {
       if (err?.name !== 'RenderingCancelledException') console.error(err);
     });
@@ -170,8 +249,24 @@ function PdfPage({
       canvas.width = 0;
       canvas.height = 0;
       textDiv.replaceChildren();
+      setFinds([]);
     };
   }, [near, scale, pdf, pageNumber, base.w, base.h]);
+
+  // Mark search matches once the page's text has been drawn.
+  useEffect(() => {
+    const layer = textRef.current;
+    const wrap = wrapRef.current;
+    if (!layer || !wrap || !findRe || renderTick === 0) {
+      setFinds([]);
+      onFindBoxes(pageNumber, []);
+      return;
+    }
+    const boxes = computeFindBoxes(layer, wrap, findRe);
+    setFinds(boxes);
+    onFindBoxes(pageNumber, boxes);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [findRe, renderTick, pageNumber]);
 
   const w = (dims?.w ?? base.w) * scale;
   const h = (dims?.h ?? base.h) * scale;
@@ -203,7 +298,15 @@ function PdfPage({
             key={`${it.id}-${i}`}
             className="pdf-hl"
             data-color={it.color}
+            data-flash={it.flash ? 'true' : undefined}
             style={{ left: `${it.x * 100}%`, top: `${it.y * 100}%`, width: `${it.w * 100}%`, height: `${it.h * 100}%` }}
+          />
+        ))}
+        {finds.map((f, i) => (
+          <div
+            key={`f${i}`}
+            className={`pdf-find${f.m === activeM ? ' is-active' : ''}`}
+            style={{ left: `${f.x * 100}%`, top: `${f.y * 100}%`, width: `${f.w * 100}%`, height: `${f.h * 100}%` }}
           />
         ))}
       </div>
@@ -230,10 +333,18 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
   const [fitPref, setFitPref] = useState<FitPref>('auto');
   const [current, setCurrent] = useState(Math.max(1, book.last_page));
   const [pageInput, setPageInput] = useState<string | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelTab, setPanelTab] = useState<PanelTab>('contents');
+  const [focusTick, setFocusTick] = useState(0);
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const [activeHit, setActiveHit] = useState(0);
+  const [activeFind, setActiveFind] = useState<{ page: number; m: number } | null>(null);
 
   const restored = useRef(false);
   const keepRatio = useRef<number | null>(null);
   const pendingPage = useRef<number | null>(null);
+  const findBoxes = useRef<Map<number, FindBox[]>>(new Map());
+  const findTarget = useRef<{ page: number; m: number } | null>(null);
   const savedPage = useRef(book.last_page);
   const currentRef = useRef(current);
   currentRef.current = current;
@@ -305,7 +416,7 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
 
   // Layout: one page, or two side by side like an open book (big screens).
   const pad = width < 640 ? 12 : 28;
-  const spread = layoutPref === 'spread' || (layoutPref === 'auto' && width >= 1100);
+  const spread = layoutPref === 'spread' || (layoutPref === 'auto' && width + (panelOpen ? PANEL_W : 0) >= 1100);
   const fitMode: 'width' | 'page' = fitPref === 'auto' ? (spread ? 'page' : 'width') : fitPref;
   const perRow = spread ? 2 : 1;
   const widthScale = Math.min(Math.max(120, width - pad * 2), spread ? 1560 : 940) / (base.w * perRow);
@@ -351,7 +462,7 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
     const el = scrollRef.current;
     const target = pageEls.current[n - 1];
     if (el && target) el.scrollTop = target.offsetTop - 14;
-  }, [spread, fitMode]);
+  }, [spread, fitMode, scale]);
 
   function changeZoom(next: number) {
     const el = scrollRef.current;
@@ -390,6 +501,8 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
         if ((pages[mid]?.offsetTop ?? 0) <= probe) lo = mid;
         else hi = mid - 1;
       }
+      // In a two-page spread both pages share a row: report the left-hand one.
+      while (lo > 0 && pages[lo - 1] && pages[lo - 1]!.offsetTop === pages[lo]!.offsetTop) lo--;
       setCurrent(lo + 1);
     });
   }, []);
@@ -417,12 +530,48 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
     const el = scrollRef.current;
     const target = pageEls.current[page - 1];
     if (el && target) el.scrollTo({ top: target.offsetTop - 14 });
-    setCurrent(page);
+    setCurrent(spread && page > 1 && page % 2 === 1 ? page - 1 : page);
   }
 
   const setEl = useCallback((n: number, el: HTMLDivElement | null) => {
     pageEls.current[n - 1] = el;
   }, []);
+
+  function closePanelOnPhone() {
+    if (window.innerWidth < 768) setPanelOpen(false);
+  }
+  function togglePanel() {
+    // Opening or closing the panel changes the reading width: keep your page.
+    pendingPage.current = currentRef.current;
+    setTimeout(() => {
+      pendingPage.current = null;
+    }, 700);
+    setPanelOpen((o) => !o);
+  }
+  function openPanel(tab: PanelTab) {
+    if (!panelOpen) {
+      pendingPage.current = currentRef.current;
+      setTimeout(() => {
+        pendingPage.current = null;
+      }, 700);
+    }
+    setPanelOpen(true);
+    setPanelTab(tab);
+    if (tab === 'search') setFocusTick((t) => t + 1);
+  }
+
+  // Ctrl/Cmd+F searches the whole book instead of just the pages on screen.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        openPanel('search');
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelOpen]);
 
   const [toast, setToast] = useState<string | null>(null);
   const notify = useCallback((m: string) => setToast(m), []);
@@ -433,6 +582,7 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
   }, [toast]);
 
   const hl = useBookHighlights(book, notify);
+  const search = useBookSearch(pdf, panelOpen && panelTab === 'search');
   const [sel, setSel] = useState<SelectionState | null>(null);
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const pointerDown = useRef(false);
@@ -442,12 +592,12 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
     hl.items.forEach((h) =>
       h.rects.forEach((r) => {
         const list = m.get(r.page) ?? [];
-        list.push({ id: h.id, color: h.color, x: r.x, y: r.y, w: r.w, h: r.h });
+        list.push({ id: h.id, color: h.color, x: r.x, y: r.y, w: r.w, h: r.h, flash: h.id === flashId });
         m.set(r.page, list);
       })
     );
     return m;
-  }, [hl.items]);
+  }, [hl.items, flashId]);
 
   // Turn the current text selection into highlight boxes (as fractions of each page).
   const capture = useCallback((): SelectionState | null => {
@@ -546,8 +696,67 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
     setMenu(hit ? { id: hit.id, x: e.clientX, y: e.clientY } : null);
   }, []);
 
+  // Scroll so a spot on a page sits comfortably in view.
+  const scrollToSpot = useCallback((page: number, fy: number) => {
+    const el = scrollRef.current;
+    const wrap = pageEls.current[page - 1];
+    if (!el || !wrap) return false;
+    el.scrollTo({ top: Math.max(0, wrap.offsetTop + fy * wrap.offsetHeight - el.clientHeight * 0.35), behavior: 'smooth' });
+    return true;
+  }, []);
+
+  function jumpToHighlight(h: BookHighlight) {
+    const r = h.rects[0];
+    if (!r || !scrollToSpot(r.page, r.y)) jumpTo(h.page);
+    setCurrent(h.page);
+    setFlashId(h.id);
+    setTimeout(() => setFlashId((id) => (id === h.id ? null : id)), 1800);
+    closePanelOnPhone();
+  }
+
+  // Search: go to a result, and bring the match into view once its page has been drawn.
+  const tryScrollToFind = useCallback(() => {
+    const t = findTarget.current;
+    if (!t) return;
+    const boxes = findBoxes.current.get(t.page);
+    if (!boxes || boxes.length === 0) return;
+    const b = boxes.find((x) => x.m === t.m) ?? boxes[0];
+    if (scrollToSpot(t.page, b.y)) findTarget.current = null;
+  }, [scrollToSpot]);
+
+  const onFindBoxes = useCallback(
+    (page: number, boxes: FindBox[]) => {
+      findBoxes.current.set(page, boxes);
+      if (findTarget.current?.page === page) tryScrollToFind();
+    },
+    [tryScrollToFind]
+  );
+
+  function pickHit(i: number) {
+    const h = search.hits[i];
+    if (!h) return;
+    setActiveHit(i);
+    setActiveFind({ page: h.page, m: h.index });
+    findTarget.current = { page: h.page, m: h.index };
+    jumpTo(h.page);
+    tryScrollToFind();
+    closePanelOnPhone();
+  }
+  function stepHit(delta: number) {
+    const n = search.hits.length;
+    if (n === 0) return;
+    pickHit((activeHit + delta + n) % n);
+  }
+  // A new search starts from the first match.
+  useEffect(() => {
+    setActiveHit(0);
+    setActiveFind(null);
+    findTarget.current = null;
+  }, [search.regex]);
+
   const menuItem = menu ? hl.items.find((h) => h.id === menu.id) ?? null : null;
   const total = pdf?.numPages ?? book.page_count;
+  const currentEnd = spread && current > 1 && current % 2 === 0 && current + 1 <= total ? current + 1 : current;
 
   return (
     <div className={`flex h-full flex-col ${theme === 'day' ? '' : `pdf-${theme}`}`} style={{ background: 'var(--bg)' }}>
@@ -560,6 +769,17 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
         >
           <ChevronLeft size={20} strokeWidth={2} />
           Library
+        </button>
+        <button
+          type="button"
+          className="tool"
+          aria-label={panelOpen ? 'Hide sidebar' : 'Show sidebar'}
+          title={panelOpen ? 'Hide sidebar' : 'Show sidebar'}
+          aria-expanded={panelOpen}
+          data-active={panelOpen ? 'true' : 'false'}
+          onClick={togglePanel}
+        >
+          <PanelLeft size={18} strokeWidth={2} />
         </button>
 
         <div className="min-w-0 flex-1 truncate px-1 text-center text-[13.5px] font-semibold tracking-[-0.008em]">
@@ -684,48 +904,86 @@ export default function PdfReader({ book, getUrl, onClose, onProgress }: Props) 
         </Popover>
       </div>
 
-      {status === 'error' ? (
-        <StateMessage
-          icon={<TriangleAlert size={22} strokeWidth={1.8} />}
-          title="Couldn’t open this book"
-          body={errorMsg}
-          action={
-            <button type="button" className="btn btn-primary" onClick={() => setAttempt((a) => a + 1)}>
-              Try again
-            </button>
-          }
-        />
-      ) : (
-        <div ref={scrollRef} onScroll={onScroll} className="relative min-h-0 flex-1 overflow-y-auto" style={{ padding: `${pad}px ${pad}px 120px` }}>
-          {status === 'loading' || !pdf ? (
-            <div className="mx-auto" style={{ width: Math.min(Math.max(width - pad * 2, 200), 940) }}>
-              <div className="skeleton" style={{ height: 'min(70vh, 640px)', borderRadius: 4 }} aria-busy="true" />
-            </div>
-          ) : (
-            rows.map((row) => (
-              <div key={row[0]} className="pdf-row" data-spread={spread && row.length === 2 ? 'true' : undefined}>
-                {spread && row.length === 1 && row[0] === 1 && (
-                  <div aria-hidden style={{ width: base.w * scale, flexShrink: 0 }} />
-                )}
-                {row.map((n, i) => (
-                  <PdfPage
-                    key={n}
-                    pdf={pdf}
-                    pageNumber={n}
-                    scale={scale}
-                    base={base}
-                    root={root}
-                    side={!spread ? 'single' : row.length === 2 ? (i === 0 ? 'left' : 'right') : row[0] === 1 ? 'right' : 'left'}
-                    setEl={setEl}
-                    items={byPage.get(n) ?? NO_ITEMS}
-                    onPageClick={onPageClick}
-                  />
-                ))}
+      <div className="relative flex min-h-0 flex-1">
+        {panelOpen && (
+          <>
+            <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setPanelOpen(false)} aria-hidden />
+            <ReaderPanel
+              pdf={pdf}
+              base={base}
+              tab={panelTab}
+              onTab={(t) => {
+                setPanelTab(t);
+                if (t === 'search') setFocusTick((x) => x + 1);
+              }}
+              current={current}
+              currentEnd={currentEnd}
+              onJump={(p) => {
+                jumpTo(p);
+                closePanelOnPhone();
+              }}
+              highlights={hl.items}
+              onJumpHighlight={jumpToHighlight}
+              onCopy={copyText}
+              onDeleteHighlight={hl.remove}
+              search={search}
+              activeHit={activeHit}
+              onPickHit={pickHit}
+              onStepHit={stepHit}
+              focusTick={focusTick}
+              onClose={() => setPanelOpen(false)}
+            />
+          </>
+        )}
+
+        {status === 'error' ? (
+          <div className="min-w-0 flex-1">
+            <StateMessage
+              icon={<TriangleAlert size={22} strokeWidth={1.8} />}
+              title="Couldn’t open this book"
+              body={errorMsg}
+              action={
+                <button type="button" className="btn btn-primary" onClick={() => setAttempt((a) => a + 1)}>
+                  Try again
+                </button>
+              }
+            />
+          </div>
+        ) : (
+          <div ref={scrollRef} onScroll={onScroll} className="relative min-h-0 min-w-0 flex-1 overflow-y-auto" style={{ padding: `${pad}px ${pad}px 120px` }}>
+            {status === 'loading' || !pdf ? (
+              <div className="mx-auto" style={{ width: Math.min(Math.max(width - pad * 2, 200), 940) }}>
+                <div className="skeleton" style={{ height: 'min(70vh, 640px)', borderRadius: 4 }} aria-busy="true" />
               </div>
-            ))
-          )}
-        </div>
-      )}
+            ) : (
+              rows.map((row) => (
+                <div key={row[0]} className="pdf-row" data-spread={spread && row.length === 2 ? 'true' : undefined}>
+                  {spread && row.length === 1 && row[0] === 1 && (
+                    <div aria-hidden style={{ width: base.w * scale, flexShrink: 0 }} />
+                  )}
+                  {row.map((n, i) => (
+                    <PdfPage
+                      key={n}
+                      pdf={pdf}
+                      pageNumber={n}
+                      scale={scale}
+                      base={base}
+                      root={root}
+                      side={!spread ? 'single' : row.length === 2 ? (i === 0 ? 'left' : 'right') : row[0] === 1 ? 'right' : 'left'}
+                      setEl={setEl}
+                      items={byPage.get(n) ?? NO_ITEMS}
+                      onPageClick={onPageClick}
+                      findRe={search.regex}
+                      activeM={activeFind?.page === n ? activeFind.m : null}
+                      onFindBoxes={onFindBoxes}
+                    />
+                  ))}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
 
       {sel && <SelectionBar x={sel.x} y={sel.y} below={sel.below} onPick={pickColor} onCopy={() => copyText(sel.text)} />}
       {menu && menuItem && (
