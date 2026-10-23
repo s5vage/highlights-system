@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { BookOpenText, Check, MoreHorizontal, Pencil, Trash2, TriangleAlert, X } from 'lucide-react';
+import { BookOpenText, Check, MoreHorizontal, Pencil, Tags, Trash2, TriangleAlert, X } from 'lucide-react';
 import Popover from '@/components/Popover';
-import { Book } from '@/lib/types';
+import { Book, Collection } from '@/lib/types';
 import { UploadJob } from './useBooks';
 import { formatSize, hueForTitle, isFinished, isStarted, progressOf } from './helpers';
 
@@ -13,12 +13,30 @@ interface Props {
   coverUrl?: string;
   index: number;
   animateIn: boolean;
+  collection?: Collection;
+  selectMode: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
   onOpen: () => void;
   onRename: (title: string) => void;
+  onEditDetails: () => void;
   onDelete: () => void;
 }
 
-export default function BookCard({ book, coverUrl, index, animateIn, onOpen, onRename, onDelete }: Props) {
+export default function BookCard({
+  book,
+  coverUrl,
+  index,
+  animateIn,
+  collection,
+  selectMode,
+  selected,
+  onToggleSelect,
+  onOpen,
+  onRename,
+  onEditDetails,
+  onDelete,
+}: Props) {
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(book.title);
   const [coverFailed, setCoverFailed] = useState(false);
@@ -40,9 +58,17 @@ export default function BookCard({ book, coverUrl, index, animateIn, onOpen, onR
   const finished = isFinished(book);
   const started = isStarted(book);
 
+  // A collection and tags show as small labels under the book; extras fold into "+N".
+  const chips: { label: string; color?: string }[] = [];
+  if (collection) chips.push({ label: collection.name, color: collection.color });
+  book.tags.forEach((t) => chips.push({ label: t }));
+  const shown = chips.slice(0, 2);
+  const more = chips.length - shown.length;
+
   return (
     <motion.div
-      className="book-card"
+      className="book-card relative"
+      data-selected={selected ? 'true' : undefined}
       initial={animateIn ? { opacity: 0, y: 12 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.38, delay: animateIn ? Math.min(index, 12) * 0.035 : 0, ease: [0.22, 1, 0.36, 1] }}
@@ -50,8 +76,8 @@ export default function BookCard({ book, coverUrl, index, animateIn, onOpen, onR
       <motion.button
         type="button"
         whileTap={{ scale: 0.97 }}
-        onClick={onOpen}
-        aria-label={`Open ${book.title}`}
+        onClick={selectMode ? onToggleSelect : onOpen}
+        aria-label={`${selectMode ? 'Select' : 'Open'} ${book.title}`}
         className="block w-full text-left"
       >
         <div className="book-cover" style={{ '--hue': `var(--hue-${hueForTitle(book.title)})` } as React.CSSProperties}>
@@ -66,6 +92,21 @@ export default function BookCard({ book, coverUrl, index, animateIn, onOpen, onR
           )}
         </div>
       </motion.button>
+
+      <button
+        type="button"
+        className="book-check"
+        data-on={selected ? 'true' : 'false'}
+        data-visible={selectMode ? 'true' : 'false'}
+        aria-label={`${selected ? 'Deselect' : 'Select'} ${book.title}`}
+        aria-pressed={selected}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleSelect();
+        }}
+      >
+        {selected && <Check size={14} strokeWidth={3} />}
+      </button>
 
       <div className="mt-3 flex items-start gap-1">
         <div className="min-w-0 flex-1">
@@ -112,6 +153,18 @@ export default function BookCard({ book, coverUrl, index, animateIn, onOpen, onR
               </span>
             )}
           </div>
+
+          {chips.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {shown.map((c, i) => (
+                <span key={i} className="tag-chip">
+                  {c.color && <span className="coll-dot" style={{ background: `var(--hue-${c.color})` }} />}
+                  <span className="truncate">{c.label}</span>
+                </span>
+              ))}
+              {more > 0 && <span className="tag-chip">+{more}</span>}
+            </div>
+          )}
         </div>
 
         <Popover
@@ -130,10 +183,20 @@ export default function BookCard({ book, coverUrl, index, animateIn, onOpen, onR
           )}
         >
           {(close) => (
-            <div className="flex min-w-[190px] flex-col">
+            <div className="flex min-w-[210px] flex-col">
               <div className="px-2.5 pb-1.5 pt-1 text-[11.5px]" style={{ color: 'var(--text-faint)' }}>
                 {formatSize(book.size_bytes)}
               </div>
+              <button
+                type="button"
+                className="menu-item"
+                onClick={() => {
+                  close();
+                  onEditDetails();
+                }}
+              >
+                <Tags size={15} strokeWidth={1.9} /> Tags &amp; collection…
+              </button>
               <button
                 type="button"
                 className="menu-item"
@@ -162,6 +225,7 @@ export default function BookCard({ book, coverUrl, index, animateIn, onOpen, onR
     </motion.div>
   );
 }
+
 // Shown in the grid while a book is being added (or if adding it failed).
 export function UploadCard({ job, onDismiss }: { job: UploadJob; onDismiss: () => void }) {
   const failed = job.status === 'error';

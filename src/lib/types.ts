@@ -71,6 +71,8 @@ export interface Book {
   created_at: string;
   last_opened_at: string | null;
     storage: 'supabase' | 'r2';
+      collection_id: string | null;
+  tags: string[];
 }
 
 // A rectangle on a PDF page, as fractions (0 to 1) of the page's width and
@@ -90,5 +92,14 @@ export interface BookHighlight {
   color: HighlightColor;
   text: string;
   rects: HlRect[];
+  created_at: string;
+}
+
+export type CollectionColor = 'blue' | 'green' | 'yellow' | 'pink' | 'purple' | 'gray';
+
+export interface Collection {
+  id: string;
+  name: string;
+  color: CollectionColor;
   created_at: string;
 }

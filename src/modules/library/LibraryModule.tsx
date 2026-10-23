@@ -2,14 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MotionConfig } from 'motion/react';
-import { BookOpenText, DatabaseZap, Plus, Search, SearchX, TriangleAlert, UploadCloud, X } from 'lucide-react';
+import { BookOpenText, DatabaseZap, ListChecks, Plus, Search, SearchX, TriangleAlert, UploadCloud, X } from 'lucide-react';
 import SegmentedControl from '@/components/SegmentedControl';
 import StateMessage from '@/components/StateMessage';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { Book } from '@/lib/types';
 import { useBooks } from './useBooks';
+import { useCollections } from './useCollections';
 import BookCard, { UploadCard } from './BookCard';
 import PdfReader from './PdfReader';
+import { BookDetailsDialog, BulkBar } from './BulkTools';
+import { CollectionBar, CollectionFilter, StorageMeter, TagFilter } from './LibraryOrganize';
 import { isFinished, isStarted, progressOf } from './helpers';
 
 type SortMode = 'added' | 'title' | 'progress';
@@ -34,6 +37,12 @@ function SectionHeader({ title, note }: { title: string; note: string }) {
   );
 }
 
+function friendlyDb(message: string): string {
+  return /column|book_collections|schema cache|does not exist/i.test(message)
+    ? 'Collections and tags need the latest Library setup SQL in Supabase.'
+    : message;
+}
+
 export default function LibraryModule() {
   const {
     books,
@@ -45,15 +54,29 @@ export default function LibraryModule() {
     addFiles,
     dismissJob,
     renameBook,
-    deleteBook,
+    deleteBooks,
     saveProgress,
     markOpened,
+    moveBooks,
+    clearCollection,
+    addTags,
+    removeTags,
+    renameTag,
+    deleteTag,
     getBookUrl,
   } = useBooks();
+  const collectionsApi = useCollections();
+  const { collections } = collectionsApi;
 
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<SortMode>('added');
+  const [collFilter, setCollFilter] = useState<CollectionFilter>('all');
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [intro, setIntro] = useState(true);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -65,35 +88,83 @@ export default function LibraryModule() {
     return () => clearTimeout(t);
   }, [loading]);
 
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 4500);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  useEffect(() => {
+    if (collectionsApi.error) setNotice(friendlyDb(collectionsApi.error));
+  }, [collectionsApi.error]);
+
+  // Shows a message if a save to the database failed.
+  const run = useCallback(async (job: Promise<string | null>) => {
+    const err = await job;
+    if (err) setNotice(friendlyDb(err));
+  }, []);
+
+  // Every tag in the library, with how many books use it.
+  const allTags = useMemo(() => {
+    const map = new Map<string, { tag: string; count: number }>();
+    books.forEach((b) =>
+      b.tags.forEach((t) => {
+        const key = t.toLowerCase();
+        const entry = map.get(key);
+        if (entry) entry.count++;
+        else map.set(key, { tag: t, count: 1 });
+      })
+    );
+    return [...map.values()].sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+  }, [books]);
+
+  // If the collection or tag you were filtering by goes away, go back to everything.
+  useEffect(() => {
+    if (collFilter !== 'all' && collFilter !== 'none' && !collections.some((c) => c.id === collFilter)) {
+      setCollFilter('all');
+    }
+  }, [collections, collFilter]);
+  useEffect(() => {
+    if (tagFilter && !allTags.some((t) => t.tag.toLowerCase() === tagFilter.toLowerCase())) setTagFilter(null);
+  }, [allTags, tagFilter]);
+
+  const searching = query.trim().length > 0;
+  const filtering = searching || collFilter !== 'all' || tagFilter !== null;
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = q
-      ? books.filter((b) => b.title.toLowerCase().includes(q) || (b.author ?? '').toLowerCase().includes(q))
-      : [...books];
+    let list = [...books];
+    if (q) list = list.filter((b) => b.title.toLowerCase().includes(q) || (b.author ?? '').toLowerCase().includes(q));
+    if (collFilter === 'none') list = list.filter((b) => !b.collection_id);
+    else if (collFilter !== 'all') list = list.filter((b) => b.collection_id === collFilter);
+    if (tagFilter) list = list.filter((b) => b.tags.some((t) => t.toLowerCase() === tagFilter.toLowerCase()));
     const time = (s: string | null) => (s ? new Date(s).getTime() : 0);
     const byTitle = (a: Book, b: Book) => a.title.localeCompare(b.title, undefined, { numeric: true });
     if (sort === 'title') list.sort(byTitle);
     else if (sort === 'progress') list.sort((a, b) => progressOf(b) - progressOf(a) || byTitle(a, b));
     else list.sort((a, b) => time(b.created_at) - time(a.created_at));
     return list;
-  }, [books, query, sort]);
+  }, [books, query, sort, collFilter, tagFilter]);
 
-  // Books you've opened lately get their own shelf, so reading never gets lost in a big library.
-  const searching = query.trim().length > 0;
+  // Books you've opened lately get their own shelf (only when you're looking at everything).
   const recent = useMemo(() => {
-    if (searching) return [];
+    if (filtering) return [];
     const cutoff = Date.now() - RECENT_DAYS * 86400000;
     return books
       .filter((b) => b.last_opened_at && new Date(b.last_opened_at).getTime() > cutoff)
       .sort((a, b) => new Date(b.last_opened_at as string).getTime() - new Date(a.last_opened_at as string).getTime());
-  }, [books, searching]);
+  }, [books, filtering]);
   const rest = useMemo(() => {
     const ids = new Set(recent.map((b) => b.id));
     return visible.filter((b) => !ids.has(b.id));
   }, [visible, recent]);
 
+  const collectionById = useMemo(() => new Map(collections.map((c) => [c.id, c])), [collections]);
+  const usedBytes = useMemo(() => books.reduce((sum, b) => sum + (b.size_bytes || 0), 0), [books]);
   const inProgress = books.filter((b) => isStarted(b) && !isFinished(b)).length;
   const open: Book | null = books.find((b) => b.id === openId) ?? null;
+  const detailsBook = books.find((b) => b.id === detailsId) ?? null;
+  const selectedBooks = useMemo(() => books.filter((b) => selected.has(b.id)), [books, selected]);
 
   // Keyed by id only, so saving your reading progress never re-opens the book.
   const openRef = useRef<Book | null>(open);
@@ -102,6 +173,52 @@ export default function LibraryModule() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const getUrl = useCallback(() => getBookUrl(openRef.current as Book), [getBookUrl, openKey]);
 
+  // ── Selecting books ──
+  function toggleSelect(id: string) {
+    setSelectMode(true);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  const exitSelect = useCallback(() => {
+    setSelectMode(false);
+    setSelected(new Set());
+  }, []);
+  const shownIds = (filtering ? visible : [...recent, ...rest]).map((b) => b.id);
+  const allShownSelected = shownIds.length > 0 && shownIds.every((id) => selected.has(id));
+
+  useEffect(() => {
+    if (!selectMode || detailsId) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') exitSelect();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectMode, detailsId, exitSelect]);
+
+  // ── Bulk actions ──
+  const ids = [...selected];
+  function bulkDelete() {
+    const n = ids.length;
+    if (n === 0) return;
+    if (confirm(`Delete ${n} ${n === 1 ? 'book' : 'books'}? The PDFs will be removed for good.`)) {
+      deleteBooks(ids);
+      exitSelect();
+    }
+  }
+  async function createAndMove(name: string, targets: string[]) {
+    const created = await collectionsApi.create(name);
+    if (created) run(moveBooks(targets, created.id));
+  }
+  async function removeCollection(id: string) {
+    await collectionsApi.remove(id);
+    clearCollection(id);
+    if (collFilter === id) setCollFilter('all');
+  }
+
   function handleFiles(files: File[]) {
     if (files.length > 0) addFiles(files);
   }
@@ -109,6 +226,26 @@ export default function LibraryModule() {
   function openBook(book: Book) {
     markOpened(book.id);
     setOpenId(book.id);
+  }
+
+  function renderCard(b: Book, i: number) {
+    return (
+      <BookCard
+        key={b.id}
+        book={b}
+        coverUrl={covers[b.id]}
+        index={i}
+        animateIn={intro}
+        collection={b.collection_id ? collectionById.get(b.collection_id) : undefined}
+        selectMode={selectMode}
+        selected={selected.has(b.id)}
+        onToggleSelect={() => toggleSelect(b.id)}
+        onOpen={() => openBook(b)}
+        onRename={(title) => renameBook(b.id, title)}
+        onEditDetails={() => setDetailsId(b.id)}
+        onDelete={() => deleteBooks([b.id])}
+      />
+    );
   }
 
   if (!isSupabaseConfigured) {
@@ -211,43 +348,85 @@ export default function LibraryModule() {
                     {summary}
                   </p>
                 )}
+                {!loading && books.length > 0 && <StorageMeter used={usedBytes} />}
               </div>
-              <button type="button" className="btn btn-primary shrink-0" onClick={() => fileInput.current?.click()}>
-                <Plus size={16} strokeWidth={2.2} />
-                Add books
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                {selectMode && shownIds.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => setSelected(allShownSelected ? new Set() : new Set(shownIds))}
+                  >
+                    {allShownSelected ? 'Clear' : 'Select all'}
+                  </button>
+                )}
+                {books.length > 0 && (
+                  <button type="button" className="btn" onClick={() => (selectMode ? exitSelect() : setSelectMode(true))}>
+                    <ListChecks size={16} strokeWidth={2} />
+                    {selectMode ? 'Done' : 'Select'}
+                  </button>
+                )}
+                <button type="button" className="btn btn-primary" onClick={() => fileInput.current?.click()}>
+                  <Plus size={16} strokeWidth={2.2} />
+                  Add books
+                </button>
+              </div>
             </div>
           </div>
 
           <div className="hl-bar sticky top-0 z-10">
-            <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-3 px-5 py-3 md:px-8">
-              <div className="search min-w-[220px] max-w-[460px] flex-1" onClick={(e) => (e.currentTarget.querySelector('input') as HTMLInputElement)?.focus()}>
-                <Search size={16} strokeWidth={2} style={{ color: 'var(--text-faint)' }} />
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search by title or author"
-                  aria-label="Search books"
+            <div className="mx-auto max-w-[1400px]">
+              <div className="flex flex-wrap items-center gap-3 px-5 py-3 md:px-8">
+                <div className="search min-w-[200px] max-w-[460px] flex-1" onClick={(e) => (e.currentTarget.querySelector('input') as HTMLInputElement)?.focus()}>
+                  <Search size={16} strokeWidth={2} style={{ color: 'var(--text-faint)' }} />
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search by title or author"
+                    aria-label="Search books"
+                  />
+                  {query && (
+                    <button
+                      type="button"
+                      aria-label="Clear search"
+                      onClick={() => setQuery('')}
+                      className="grid h-5 w-5 place-items-center rounded-full"
+                      style={{ background: 'var(--fill-strong)', color: 'var(--text-dim)' }}
+                    >
+                      <X size={12} strokeWidth={2.4} />
+                    </button>
+                  )}
+                </div>
+                <TagFilter
+                  tags={allTags}
+                  value={tagFilter}
+                  onChange={setTagFilter}
+                  onRename={(from, to) => {
+                    run(renameTag(from, to));
+                    if (tagFilter && tagFilter.toLowerCase() === from.toLowerCase()) setTagFilter(to.trim());
+                  }}
+                  onDelete={(tag) => run(deleteTag(tag))}
                 />
-                {query && (
-                  <button
-                    type="button"
-                    aria-label="Clear search"
-                    onClick={() => setQuery('')}
-                    className="grid h-5 w-5 place-items-center rounded-full"
-                    style={{ background: 'var(--fill-strong)', color: 'var(--text-dim)' }}
-                  >
-                    <X size={12} strokeWidth={2.4} />
-                  </button>
-                )}
+                <div className="w-full md:ml-auto md:w-auto">
+                  <SegmentedControl label="Sort books" options={SORT_OPTIONS} value={sort} onChange={setSort} />
+                </div>
               </div>
-              <div className="w-full md:ml-auto md:w-auto">
-                <SegmentedControl label="Sort books" options={SORT_OPTIONS} value={sort} onChange={setSort} />
-              </div>
+              {books.length > 0 && (
+                <CollectionBar
+                  collections={collections}
+                  books={books}
+                  value={collFilter}
+                  onChange={setCollFilter}
+                  onCreate={(name) => collectionsApi.create(name)}
+                  onRename={(id, name) => collectionsApi.rename(id, name)}
+                  onRecolor={(id, color) => collectionsApi.recolor(id, color)}
+                  onDelete={removeCollection}
+                />
+              )}
             </div>
           </div>
 
-          <div className="mx-auto max-w-[1400px] px-5 pb-24 pt-8 md:px-8">
+          <div className="mx-auto max-w-[1400px] px-5 pb-32 pt-8 md:px-8">
             {loading ? (
               <div className="book-grid" aria-busy="true" aria-label="Loading library">
                 {Array.from({ length: 8 }).map((_, i) => (
@@ -269,11 +448,23 @@ export default function LibraryModule() {
             ) : visible.length === 0 && jobs.length === 0 ? (
               <StateMessage
                 icon={<SearchX size={22} strokeWidth={1.8} />}
-                title="No books match"
-                body="Try a different title or author."
+                title={searching ? 'No books match' : 'Nothing here yet'}
+                body={
+                  searching
+                    ? 'Try a different title or author.'
+                    : 'No books in this view. Select some books and use Move or Tag to add them.'
+                }
                 action={
-                  <button type="button" className="btn" onClick={() => setQuery('')}>
-                    Clear search
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      setQuery('');
+                      setCollFilter('all');
+                      setTagFilter(null);
+                    }}
+                  >
+                    Show all books
                   </button>
                 }
               />
@@ -282,20 +473,7 @@ export default function LibraryModule() {
                 {recent.length > 0 && (
                   <section className="mb-14">
                     <SectionHeader title="Continue reading" note={`Opened in the last ${RECENT_DAYS} days`} />
-                    <div className="book-grid">
-                      {recent.map((b, i) => (
-                        <BookCard
-                          key={b.id}
-                          book={b}
-                          coverUrl={covers[b.id]}
-                          index={i}
-                          animateIn={intro}
-                          onOpen={() => openBook(b)}
-                          onRename={(title) => renameBook(b.id, title)}
-                          onDelete={() => deleteBook(b)}
-                        />
-                      ))}
-                    </div>
+                    <div className="book-grid">{recent.map((b, i) => renderCard(b, i))}</div>
                   </section>
                 )}
 
@@ -308,18 +486,7 @@ export default function LibraryModule() {
                       {jobs.map((j) => (
                         <UploadCard key={j.id} job={j} onDismiss={() => dismissJob(j.id)} />
                       ))}
-                      {rest.map((b, i) => (
-                        <BookCard
-                          key={b.id}
-                          book={b}
-                          coverUrl={covers[b.id]}
-                          index={i + recent.length}
-                          animateIn={intro}
-                          onOpen={() => openBook(b)}
-                          onRename={(title) => renameBook(b.id, title)}
-                          onDelete={() => deleteBook(b)}
-                        />
-                      ))}
+                      {rest.map((b, i) => renderCard(b, i + recent.length))}
                     </div>
                   </section>
                 )}
@@ -327,6 +494,39 @@ export default function LibraryModule() {
             )}
           </div>
         </div>
+
+        {selectMode && selected.size > 0 && (
+          <BulkBar
+            books={selectedBooks}
+            collections={collections}
+            allTags={allTags}
+            onAddTag={(tag) => run(addTags(ids, [tag]))}
+            onRemoveTag={(tag) => run(removeTags(ids, [tag]))}
+            onMove={(id) => run(moveBooks(ids, id))}
+            onCreateAndMove={(name) => createAndMove(name, ids)}
+            onDelete={bulkDelete}
+            onClose={exitSelect}
+          />
+        )}
+
+        {detailsBook && (
+          <BookDetailsDialog
+            book={detailsBook}
+            collections={collections}
+            allTags={allTags}
+            onClose={() => setDetailsId(null)}
+            onSetCollection={(id) => run(moveBooks([detailsBook.id], id))}
+            onAddTag={(tag) => run(addTags([detailsBook.id], [tag]))}
+            onRemoveTag={(tag) => run(removeTags([detailsBook.id], [tag]))}
+            onCreateCollection={(name) => createAndMove(name, [detailsBook.id])}
+          />
+        )}
+
+        {notice && (
+          <div className="pop !min-w-0 !px-4 !py-2.5 text-[13px] font-medium" style={{ left: '50%', bottom: 88, top: 'auto', transform: 'translateX(-50%)' }} role="status">
+            {notice}
+          </div>
+        )}
 
         {dragging && (
           <div

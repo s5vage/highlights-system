@@ -54,3 +54,20 @@ export function bookTag(title: string): string {
   }
   return t || 'Book';
 }
+
+// Backblaze's free plan: 10 GB (they count in decimal gigabytes).
+export const STORAGE_LIMIT_BYTES = 10 * 1000 * 1000 * 1000;
+
+export function formatStorage(bytes: number): string {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(bytes >= 1e10 ? 0 : 1)} GB`;
+  return `${Math.max(0, Math.round(bytes / 1e6))} MB`;
+}
+
+export const COLLECTION_COLORS = ['blue', 'green', 'yellow', 'pink', 'purple', 'gray'] as const;
+
+// Tidy a typed tag, and reuse the spelling of an existing one (so "money" and "Money" stay one tag).
+export function canonicalTag(input: string, existing: string[]): string {
+  const t = input.trim().replace(/\s+/g, ' ').slice(0, 32);
+  if (!t) return '';
+  return existing.find((e) => e.toLowerCase() === t.toLowerCase()) ?? t;
+}

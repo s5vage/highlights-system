@@ -1077,3 +1077,120 @@ html[data-theme='light'] .pop {
   outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
   outline-offset: 1px;
 }
+
+/* Collections, tags, and selecting books */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.coll-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 13px;
+  border-radius: 99px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  background: var(--fill);
+  color: var(--text-dim);
+  transition: background 0.15s, color 0.15s;
+}
+.coll-chip:hover {
+  color: var(--text);
+}
+.coll-chip[data-active='true'] {
+  background: var(--text);
+  color: var(--bg);
+}
+.coll-chip-new {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--border);
+}
+.coll-dot {
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+  border-radius: 99px;
+  background: var(--hue-gray);
+}
+.coll-more {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 99px;
+}
+.coll-more:hover {
+  background: rgb(128 128 128 / 0.28);
+}
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 99px;
+  font-size: 11.5px;
+  font-weight: 500;
+  background: var(--fill);
+  color: var(--text-dim);
+}
+.tag-check {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1.5px var(--text-faint);
+  color: #fff;
+}
+.tag-check[data-state='all'],
+.tag-check[data-state='some'] {
+  background: var(--accent);
+  box-shadow: none;
+}
+.book-check {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 99px;
+  color: #fff;
+  background: rgb(0 0 0 / 0.32);
+  box-shadow: inset 0 0 0 2px rgb(255 255 255 / 0.92);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.book-card:hover .book-check,
+.book-check[data-visible='true'],
+.book-check[data-on='true'] {
+  opacity: 1;
+}
+.book-card:hover .book-check {
+  transform: translateY(-3px);
+}
+@media (hover: none) {
+  .book-check {
+    opacity: 1;
+  }
+}
+.book-check[data-on='true'] {
+  background: var(--accent);
+  box-shadow: none;
+}
+.book-card[data-selected='true'] .book-cover {
+  box-shadow: 0 0 0 3px var(--accent), 0 10px 26px -12px rgb(0 0 0 / 0.4);
+}
