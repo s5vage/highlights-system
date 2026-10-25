@@ -98,6 +98,27 @@ export default function LibraryModule() {
     if (collectionsApi.error) setNotice(friendlyDb(collectionsApi.error));
   }, [collectionsApi.error]);
 
+
+    // Opened from the Graph: jump straight into that book.
+  useEffect(() => {
+    function openFromGraph() {
+      if (loading) return;
+      let want: string | null = null;
+      try {
+        want = sessionStorage.getItem('lib_open_book');
+      } catch {
+        return;
+      }
+      if (!want) return;
+      const book = books.find((b) => b.id === want);
+      sessionStorage.removeItem('lib_open_book');
+      if (book) openBook(book);
+    }
+    openFromGraph();
+    window.addEventListener('lib-open-book', openFromGraph);
+    return () => window.removeEventListener('lib-open-book', openFromGraph);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, books]);
   // Shows a message if a save to the database failed.
   const run = useCallback(async (job: Promise<string | null>) => {
     const err = await job;

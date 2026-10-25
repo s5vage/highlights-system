@@ -21,6 +21,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import Popover from '@/components/Popover';
+import LocalGraph from '@/modules/graph/LocalGraph';
 import { Folder, Note } from '@/lib/types';
 import { WikiLink } from './WikiLinkMark';
 import EditorToolbar from './EditorToolbar';
@@ -47,6 +48,7 @@ interface Props {
   onUpdate: (patch: Partial<Pick<Note, 'title' | 'content' | 'color' | 'folder_id'>>) => void;
   onDelete: () => void;
   onOpenNote: (id: string) => void;
+  onOpenModule?: (module: 'notes' | 'highlights' | 'library', id?: string) => void;
   onNavigateTitle: (title: string) => void;
   onShiftDay: (delta: number) => void;
   onGoToday: () => void;
@@ -90,6 +92,7 @@ export default function NoteEditor({
   onUpdate,
   onDelete,
   onOpenNote,
+ onOpenModule, 
   onNavigateTitle,
   onShiftDay,
   onGoToday,
@@ -378,6 +381,11 @@ export default function NoteEditor({
               </div>
             </div>
           )}
+                    <LocalGraph
+            noteId={note.id}
+            onOpenNote={onOpenNote}
+            onOpenModule={onOpenModule}
+          />
         </div>
       </div>
     </motion.section>

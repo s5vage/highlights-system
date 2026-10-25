@@ -93,11 +93,12 @@ export default function Page() {
           />
         )}
         {activeTab.moduleId === 'notes' && (
-          <NotesModule
-            pendingId={pendingSelection?.module === 'notes' ? pendingSelection.id : null}
-            onConsumedPending={() => setPendingSelection(null)}
-          />
-        )}
+  <NotesModule
+    pendingId={pendingSelection?.module === 'notes' ? pendingSelection.id : null}
+    onConsumedPending={() => setPendingSelection(null)}
+    onOpenModule={openModule}
+  />
+)}
         {activeTab.moduleId === 'canvas' && (
           <PlaceholderModule
             title="Canvas"

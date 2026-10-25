@@ -10,7 +10,7 @@ import NoteList, { ScopeOption } from './NoteList';
 import NoteEditor from './NoteEditor';
 import StateMessage from '@/components/StateMessage';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { Note } from '@/lib/types';
+import { ModuleId, Note } from '@/lib/types';
 import { previewOf, toDateStr } from './helpers';
 
 const FOLDER_HUES = ['blue', 'green', 'pink', 'yellow', 'gray'];
@@ -21,9 +21,10 @@ const byUpdated = (a: Note, b: Note) =>
 interface Props {
   pendingId?: string | null;
   onConsumedPending?: () => void;
+  onOpenModule: (id: ModuleId, focusId?: string) => void;
 }
 
-export default function NotesModule({ pendingId, onConsumedPending }: Props = {}) {
+export default function NotesModule({ pendingId, onConsumedPending, onOpenModule }: Props) {
   const {
     notes,
     loading,
@@ -298,6 +299,7 @@ export default function NotesModule({ pendingId, onConsumedPending }: Props = {}
                 setJournalModeOff();
                 handleSelect(id);
               }}
+              onOpenModule={onOpenModule}
               onNavigateTitle={navigateToTitle}
               onShiftDay={shiftJournalDay}
               onGoToday={() => openJournalDate(toDateStr(new Date()))}
