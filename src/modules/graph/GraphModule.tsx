@@ -110,6 +110,27 @@ export default function GraphModule({ onOpenModule }: { onOpenModule: OpenFn }) 
     setSelectedId(null);
   }
 
+    // "Open in Graph" from a note: fly to that note once the graph is ready.
+  useEffect(() => {
+    function focusFromNote() {
+      if (!graph) return;
+      let id: string | null = null;
+      try {
+        id = sessionStorage.getItem('graph_focus');
+      } catch {
+        return;
+      }
+      if (!id) return;
+      sessionStorage.removeItem('graph_focus');
+      const n = graph.nodes.find((x) => x.id === id);
+      if (n) pick(n);
+    }
+    focusFromNote();
+    window.addEventListener('graph-focus', focusFromNote);
+    return () => window.removeEventListener('graph-focus', focusFromNote);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graph]);
+
   function applyPreset(id: string) {
     setPreset(id);
     const days = PRESETS.find((p) => p.id === id)?.days ?? 0;

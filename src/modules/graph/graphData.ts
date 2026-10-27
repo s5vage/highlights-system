@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-
+import { bestTitleMatch } from './linkResolve';
 export type NodeType = 'note' | 'book' | 'tag' | 'highlight';
 
 export const TYPE_META: Record<NodeType, { label: string; color: string; rgb: [number, number, number] }> = {
@@ -108,8 +108,11 @@ export function buildGraph(raw: Raw): Graph {
     links.push({ source: a, target: b });
   };
 
+  // Notes with real writing win a title; a book is next; an empty note with the same title comes last
+  // (that is usually just a leftover from clicking a link).
   const noteByTitle = new Map<string, string>();
-  const bookByTitle = new Map<string, string>();
+  const emptyNoteByTitle = new Map<string, string>();
+  const bookList: { id: string; title: string }[] = raw.books.map((b) => ({ id: b.id, title: b.title }));
   const tagLabel = new Map<string, string>();
   const tagId = (raw: string): string | null => {
     const clean = raw.trim().replace(/^#+/, '').trim();
@@ -121,8 +124,8 @@ export function buildGraph(raw: Raw): Graph {
 
   raw.notes.forEach((n) => {
     const title = (n.title || 'Untitled').trim() || 'Untitled';
-    noteByTitle.set(norm(title), `n:${n.id}`);
     const text = (n.search_text || '').replace(/\s+/g, ' ').trim();
+    (text ? noteByTitle : emptyNoteByTitle).set(norm(title), `n:${n.id}`);
     nodes.push({
       id: `n:${n.id}`,
       type: 'note',
@@ -135,7 +138,7 @@ export function buildGraph(raw: Raw): Graph {
     });
   });
   raw.books.forEach((b) => {
-    bookByTitle.set(norm(b.title), `b:${b.id}`);
+
     nodes.push({
       id: `b:${b.id}`,
       type: 'book',
@@ -162,7 +165,8 @@ export function buildGraph(raw: Raw): Graph {
   // Links between notes, and from notes to books, written as [[Title]].
   raw.notes.forEach((n) => {
     wikiTargets(n.content).forEach((t) => {
-      const target = noteByTitle.get(t) ?? bookByTitle.get(t);
+      const book = noteByTitle.has(t) ? null : bestTitleMatch(bookList, (x) => x.title, t);
+      const target = noteByTitle.get(t) ?? (book ? `b:${book.id}` : null) ?? emptyNoteByTitle.get(t);
       if (target) addLink(`n:${n.id}`, target);
     });
     (n.tags ?? []).forEach((t) => {

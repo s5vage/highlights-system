@@ -9,8 +9,10 @@ import HighlightsModule from '@/modules/highlights/HighlightsModule';
 import NotesModule from '@/modules/notes/NotesModule';
 import GraphModule from '@/modules/graph/GraphModule';
 import LibraryModule from '@/modules/library/LibraryModule';
+import BookLinkHandler from '@/modules/graph/BookLinkHandler';
 import { MODULES } from '@/lib/modules';
 import { ModuleId, OpenTab } from '@/lib/types';
+
 
 const HOME_TAB: OpenTab = {
   tabId: 'home',
@@ -129,4 +131,5 @@ export default function Page() {
       )}
     </div>
   );
+  <BookLinkHandler onOpenModule={openModule} />
 }

@@ -15,6 +15,7 @@ interface Props {
   nodes: GNode[];
   links: GLink[];
   variant?: 'global' | 'local';
+  interactive?: boolean; // a local graph that fills the screen: wheel zoom and touch drag work like the main graph
   highlightMode: 'auto' | 'on' | 'off';
   fitToken?: number; // change this to re-centre and zoom to fit once the layout settles
   forceShow?: Set<string>;
@@ -214,10 +215,10 @@ const GraphCanvas = forwardRef<GraphHandle, Props>(function GraphCanvas(props, r
         x1 = Math.max(x1, n.x + n.r);
         y1 = Math.max(y1, n.y + n.r);
       });
-      const pad = isLocal() ? 36 : 70;
+      const pad = isLocal() && !propsRef.current.interactive ? 36 : 70;
       const bw = Math.max(60, x1 - x0);
       const bh = Math.max(60, y1 - y0);
-      const k = clamp(Math.min((size.w - pad * 2) / bw, (size.h - pad * 2) / bh), KMIN, isLocal() ? 1.6 : 2.4);
+      const k = clamp(Math.min((size.w - pad * 2) / bw, (size.h - pad * 2) / bh), KMIN, isLocal() ? (propsRef.current.interactive ? 2.2 : 1.6) : 2.4);
       return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, k };
     };
     const fit = (animate = true) => {
@@ -652,7 +653,7 @@ const GraphCanvas = forwardRef<GraphHandle, Props>(function GraphCanvas(props, r
         return;
       }
       const node = hit(p.x, p.y);
-      const draggable = !(isLocal() && e.pointerType === 'touch');
+            const draggable = !(isLocal() && !propsRef.current.interactive && e.pointerType === 'touch');
       down = { x: p.x, y: p.y, t: performance.now(), node, type: e.pointerType, moved: false, mode: node && draggable ? 'node' : 'pan' };
       if (down.mode === 'pan' && isLocal() && e.pointerType === 'touch') down = { ...down, mode: 'pan' };
     };
@@ -773,7 +774,7 @@ const GraphCanvas = forwardRef<GraphHandle, Props>(function GraphCanvas(props, r
     };
 
     const onWheel = (e: WheelEvent) => {
-      if (isLocal() && !e.ctrlKey && !e.metaKey) return; // let the page scroll
+            if (isLocal() && !propsRef.current.interactive && !e.ctrlKey && !e.metaKey) return; // let the page scroll
       e.preventDefault();
       stopAnim();
       const p = localPt(e);
@@ -861,9 +862,9 @@ const GraphCanvas = forwardRef<GraphHandle, Props>(function GraphCanvas(props, r
     <div
       ref={wrapRef}
       className={`relative h-full w-full overflow-hidden ${props.className ?? ''}`}
-      style={{ background: 'radial-gradient(ellipse 75% 75% at 50% 50%, #121219 0%, #07070a 100%)', cursor: 'grab' }}
+      style={{ background: 'radial-gradient(ellipse 75% 75% at 50% 50%, #17152f 0%, #080716 100%)', cursor: 'grab' }}
     >
-      <canvas ref={canvasRef} className="block" style={{ touchAction: local ? 'pan-y' : 'none' }} />
+      <canvas ref={canvasRef} className="block" style={{ touchAction: local && !props.interactive ? 'pan-y' : 'none' }} />
       {g && preview && (
         <div className="g-card" style={{ left, top, width: cardW, pointerEvents: preview.touch ? 'auto' : 'none' }}>
           <div className="flex items-center gap-2">

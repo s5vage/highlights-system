@@ -1427,3 +1427,62 @@ html[data-theme='light'] .pop {
 .g-switchrow input:checked + .g-switch::after {
   transform: translateX(16px);
 }
+
+
+/* ─── Dark theme: Midnight Navy ─── */
+html:not([data-theme='light']) {
+  color-scheme: dark;
+
+  /* Core surfaces */
+  --bg: #0B1120;
+  --bar: rgb(13 21 37 / 0.88);
+  --surface: #111B2D;
+  --surface-hover: #19263A;
+
+  /* Interactive fills */
+  --fill: rgb(137 166 214 / 0.09);
+  --fill-strong: rgb(137 166 214 / 0.15);
+  --seg-thumb: #293A54;
+
+  /* Borders and separators */
+  --border: rgb(148 170 205 / 0.17);
+  --hairline: rgb(148 170 205 / 0.09);
+
+  /* Typography */
+  --text: #E6EDF7;
+  --text-dim: rgb(206 218 236 / 0.74);
+  --text-faint: rgb(173 190 215 / 0.48);
+
+  /* Primary accent */
+  --accent: #80A7F5;
+  --tint: 21%;
+
+  /* Tag colors: soft, muted pastels */
+  --hue-yellow: #E5C77B;
+  --hue-green: #86C9A8;
+  --hue-blue: #8DB7EE;
+  --hue-pink: #DFA0BE;
+  --hue-purple: #B8A8E5;
+  --hue-gray: #A3B0C3;
+  --hue-red: #E9948F;
+
+  /* Elevation */
+  --pop: 0 30px 80px -20px rgb(2 8 20 / 0.72);
+  --lift: 0 14px 34px -16px rgb(2 8 20 / 0.60);
+}
+
+.pdf-dim,
+.pdf-night {
+  background: #0c0b19 !important;
+}
+.g-root {
+  background: #080716;
+}
+.g-glass {
+  background: rgb(23 21 44 / 0.94);
+  border-color: rgb(176 170 255 / 0.12);
+}
+.g-card {
+  background: rgb(26 24 50 / 0.97);
+  border-color: rgb(176 170 255 / 0.14);
+}
