@@ -48,7 +48,7 @@ interface Props {
   onUpdate: (patch: Partial<Pick<Note, 'title' | 'content' | 'color' | 'folder_id'>>) => void;
   onDelete: () => void;
   onOpenNote: (id: string) => void;
-  onOpenModule?: (module: 'notes' | 'highlights' | 'library', id?: string) => void;
+  onOpenModule?: (module: 'notes' | 'highlights' | 'library' | 'graph', id?: string) => void;
   onNavigateTitle: (title: string) => void;
   onShiftDay: (delta: number) => void;
   onGoToday: () => void;
