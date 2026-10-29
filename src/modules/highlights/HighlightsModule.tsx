@@ -8,6 +8,8 @@ import {
   Hash,
   Highlighter,
   Library,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pin,
   Search,
   SearchX,
@@ -15,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { useHighlights } from './useHighlights';
+import { usePersistedBool } from '@/lib/usePersisted';
 import HighlightCard from './HighlightCard';
 import HighlightModal from './HighlightModal';
 import SegmentedControl from '@/components/SegmentedControl';
@@ -110,6 +113,8 @@ export default function HighlightsModule({ pendingId, onConsumedPending }: Props
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [intro, setIntro] = useState(true);
   const searchRef = useRef<HTMLInputElement>(null);
+    // The tag sidebar can be tucked away; the choice is remembered.
+  const [sideCollapsed, toggleSide] = usePersistedBool('hl_side_collapsed');
 
   useEffect(() => {
     const raw = localStorage.getItem(PIN_STORAGE_KEY);
@@ -251,7 +256,13 @@ export default function HighlightsModule({ pendingId, onConsumedPending }: Props
     <MotionConfig reducedMotion="user">
       <div className="flex h-full" style={{ background: 'var(--bg)' }}>
         {/* Sidebar */}
-        <aside className="hl-side hidden w-[244px] shrink-0 flex-col overflow-y-auto p-3 md:flex">
+               <aside
+          className="hl-side hl-side-anim hidden shrink-0 flex-col overflow-y-auto p-3 md:flex"
+          data-collapsed={sideCollapsed}
+          aria-label="Highlights sidebar"
+          aria-hidden={sideCollapsed}
+        >
+          <div className="flex min-w-[220px] flex-col">
           <LayoutGroup id="hl-side">
             <div className="side-title">Library</div>
             <SideRow
@@ -280,9 +291,9 @@ export default function HighlightsModule({ pendingId, onConsumedPending }: Props
                 count={count}
               />
             ))}
-          </LayoutGroup>
+                    </LayoutGroup>
+          </div>
         </aside>
-
         {/* Main */}
         <main className="min-w-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-[1760px]">
@@ -311,6 +322,16 @@ export default function HighlightsModule({ pendingId, onConsumedPending }: Props
           {/* Sticky toolbar */}
           <div className="hl-bar sticky top-0 z-10">
             <div className="mx-auto flex max-w-[1760px] flex-wrap items-center gap-3 px-5 py-3 md:px-8">
+                            <button
+                type="button"
+                className="tool hidden md:grid"
+                aria-label={sideCollapsed ? 'Show the sidebar' : 'Hide the sidebar'}
+                title={sideCollapsed ? 'Show the sidebar' : 'Hide the sidebar'}
+                aria-expanded={!sideCollapsed}
+                onClick={() => toggleSide()}
+              >
+                {sideCollapsed ? <PanelLeftOpen size={18} strokeWidth={2} /> : <PanelLeftClose size={18} strokeWidth={2} />}
+              </button>
               <div className="search min-w-[220px] max-w-[460px] flex-1" onClick={() => searchRef.current?.focus()}>
                 <Search size={16} strokeWidth={2} style={{ color: 'var(--text-faint)' }} />
                 <input

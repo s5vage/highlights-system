@@ -2,14 +2,16 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { MotionConfig } from 'motion/react';
-import { DatabaseZap, NotebookPen, SquarePen, TriangleAlert } from 'lucide-react';
+import { ChevronLeft, ChevronRight, DatabaseZap, NotebookPen, SquarePen, TriangleAlert } from 'lucide-react';
 import { useNotes } from './useNotes';
 import { useFolders } from './useFolders';
 import NotesSidebar from './NotesSidebar';
 import NoteList, { ScopeOption } from './NoteList';
 import NoteEditor from './NoteEditor';
 import StateMessage from '@/components/StateMessage';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { usePersistedBool } from '@/lib/usePersisted';
+import { bestTitleMatch } from '@/modules/graph/linkResolve';
 import { ModuleId, Note } from '@/lib/types';
 import { previewOf, toDateStr } from './helpers';
 
@@ -44,6 +46,9 @@ export default function NotesModule({ pendingId, onConsumedPending, onOpenModule
   const [mobileOpen, setMobileOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [focusTitle, setFocusTitle] = useState(false);
+  // The folders column and the note list can be tucked away; the choice is remembered.
+  const [sideCollapsed, toggleSide] = usePersistedBool('notes_side_collapsed');
+  const [listCollapsed, toggleList] = usePersistedBool('notes_list_collapsed');
 
   const journal = scope === 'journal';
   const selected = notes.find((n) => n.id === selectedId) ?? null;
@@ -152,19 +157,50 @@ export default function NotesModule({ pendingId, onConsumedPending, onOpenModule
     setMobileOpen(false);
   }
 
-  function navigateToTitle(title: string) {
-    const match = notes.find((n) => !n.is_journal && n.title.trim().toLowerCase() === title.trim().toLowerCase());
-    if (match) {
+  // A book in the Library that a typed [[link]] means, if there is one.
+  async function findBookId(title: string): Promise<string | null> {
+    try {
+      const { data } = await supabase.from('books').select('id,title');
+      const book = bestTitleMatch((data as { id: string; title: string }[]) ?? [], (b) => b.title, title);
+      return book ? book.id : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Clicking a [[link]]: a note with writing in it wins; then a book in the Library; then an empty
+  // note with that name; and only if there is nothing at all does it offer to create a note.
+  async function navigateToTitle(title: string) {
+    const want = title.trim().toLowerCase();
+    const same = notes.filter((n) => !n.is_journal && n.title.trim().toLowerCase() === want);
+    const open = (id: string) => {
       setScope('all');
-      setSelectedId(match.id);
+      setSelectedId(id);
       setMobileOpen(true);
-    } else if (confirm(`There’s no note called “${title}” yet. Create it?`)) {
+    };
+
+    const real = same.find((n) => previewOf(n.content).trim() !== '');
+    if (real) return open(real.id);
+
+    const bookId = await findBookId(title);
+    if (bookId) {
+      try {
+        sessionStorage.setItem('lib_open_book', bookId);
+      } catch {
+        /* the Library just opens normally */
+      }
+      onOpenModule('library');
+      setTimeout(() => window.dispatchEvent(new Event('lib-open-book')), 150);
+      return;
+    }
+
+    if (same[0]) return open(same[0].id);
+
+    if (confirm(`There’s no note called “${title}” yet. Create it?`)) {
       createNote(null).then((note) => {
         if (note) {
           updateNote(note.id, { title });
-          setScope('all');
-          setSelectedId(note.id);
-          setMobileOpen(true);
+          open(note.id);
         }
       });
     }
@@ -252,6 +288,8 @@ export default function NotesModule({ pendingId, onConsumedPending, onOpenModule
           scope={scope}
           folders={folders}
           counts={counts}
+          collapsed={sideCollapsed}
+          onToggle={() => toggleSide()}
           onScope={changeScope}
           onCreateFolder={handleCreateFolder}
           onDeleteFolder={handleDeleteFolder}
@@ -259,9 +297,12 @@ export default function NotesModule({ pendingId, onConsumedPending, onOpenModule
 
         {/* Note list: the whole screen on phones until a note is opened */}
         <div
-          className={`${mobileOpen ? 'hidden' : 'flex'} min-w-0 flex-1 flex-col md:flex md:w-[330px] md:flex-none md:shrink-0`}
+          className={`${mobileOpen ? 'hidden' : 'flex'} notes-list min-w-0 flex-1 flex-col md:flex`}
+          data-collapsed={listCollapsed}
           style={{ borderRight: '1px solid var(--hairline)' }}
+          aria-hidden={listCollapsed}
         >
+          <div className="flex h-full w-full min-w-0 flex-col md:min-w-[330px]">
           <NoteList
             title={scopeTitle}
             subtitle={subtitle}
@@ -279,10 +320,22 @@ export default function NotesModule({ pendingId, onConsumedPending, onOpenModule
             scope={scope}
             onScope={changeScope}
           />
+          </div>
         </div>
 
         {/* Editor */}
-        <div className={`${mobileOpen ? 'flex' : 'hidden'} min-w-0 flex-1 md:flex`} style={{ background: 'var(--surface)' }}>
+        <div className={`${mobileOpen ? 'flex' : 'hidden'} relative min-w-0 flex-1 md:flex`} style={{ background: 'var(--surface)' }}>
+          {/* A small handle on the edge of the note list: tucks the list away, or brings it back */}
+          <button
+            type="button"
+            className="edge-toggle hidden md:grid"
+            aria-label={listCollapsed ? 'Show the note list' : 'Hide the note list'}
+            title={listCollapsed ? 'Show the note list' : 'Hide the note list'}
+            aria-expanded={!listCollapsed}
+            onClick={() => toggleList()}
+          >
+            {listCollapsed ? <ChevronRight size={14} strokeWidth={2.4} /> : <ChevronLeft size={14} strokeWidth={2.4} />}
+          </button>
           {selected ? (
             <NoteEditor
               key={selected.id}

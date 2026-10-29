@@ -1486,3 +1486,74 @@ html:not([data-theme='light']) {
   background: rgb(26 24 50 / 0.97);
   border-color: rgb(176 170 255 / 0.14);
 }
+
+/* ─── Collapsible sidebars ─── */
+.notes-side {
+  width: 232px;
+  transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1), padding 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.notes-side[data-collapsed='true'] {
+  width: 62px;
+  padding-left: 9px;
+  padding-right: 9px;
+}
+.side-row-rail {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+.hl-side-anim {
+  width: 244px;
+  transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1), padding 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s,
+    visibility 0s;
+}
+.hl-side-anim[data-collapsed='true'] {
+  width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  border-right-width: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1), padding 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s,
+    visibility 0s linear 0.28s;
+}
+@media (min-width: 768px) {
+  .notes-list {
+    width: 330px;
+    flex: none;
+    overflow: hidden;
+    transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s;
+  }
+  .notes-list[data-collapsed='true'] {
+    width: 0;
+    border-right-width: 0 !important;
+    visibility: hidden;
+    transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.28s;
+  }
+}
+.edge-toggle {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  z-index: 6;
+  width: 20px;
+  height: 46px;
+  transform: translate(-50%, -50%);
+  place-items: center;
+  border-radius: 99px;
+  background: var(--surface-hover);
+  color: var(--text-dim);
+  box-shadow: inset 0 0 0 1px var(--hairline), 0 4px 14px -6px rgb(0 0 0 / 0.5);
+  opacity: 0.55;
+  transition: opacity 0.15s, color 0.15s;
+}
+.edge-toggle:hover,
+.edge-toggle:focus-visible {
+  opacity: 1;
+  color: var(--text);
+}
+@media (hover: none) {
+  .edge-toggle {
+    opacity: 0.9;
+  }
+}
