@@ -9,16 +9,16 @@ import { COLLECTION_COLORS, STORAGE_LIMIT_BYTES, formatStorage } from './helpers
 export type CollectionFilter = 'all' | 'none' | string;
 
 // "2.1 GB of 10 GB used", with a bar that turns amber, then red, as it fills.
-export function StorageMeter({ used }: { used: number }) {
-  const pct = Math.min(100, (used / STORAGE_LIMIT_BYTES) * 100);
+export function StorageMeter({ used, limit }: { used: number; limit: number }) {
+  const pct = Math.min(100, (used / Math.max(1, limit)) * 100);
   const color = pct >= 95 ? 'var(--hue-red, #e5655b)' : pct >= 80 ? 'var(--hue-yellow)' : 'var(--accent)';
   return (
-    <div className="mt-3 flex items-center gap-3" title="Your free Backblaze storage">
+    <div className="mt-3 flex items-center gap-3" title="Your storage allowance">
       <div className="progress !h-[5px] w-[170px]" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)} aria-label="Storage used">
         <span style={{ width: `${used > 0 ? Math.max(pct, 1.5) : 0}%`, background: color }} />
       </div>
       <span className="tnum text-[12.5px]" style={{ color: 'var(--text-dim)' }}>
-        {formatStorage(used)} of 10 GB used
+        {formatStorage(used)} of {formatStorage(limit)} used
       </span>
     </div>
   );

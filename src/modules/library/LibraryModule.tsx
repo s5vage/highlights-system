@@ -64,6 +64,7 @@ export default function LibraryModule() {
     renameTag,
     deleteTag,
     getBookUrl,
+  quotaBytes,
   } = useBooks();
   const collectionsApi = useCollections();
   const { collections } = collectionsApi;
@@ -369,7 +370,7 @@ export default function LibraryModule() {
                     {summary}
                   </p>
                 )}
-                {!loading && books.length > 0 && <StorageMeter used={usedBytes} />}
+                {!loading && books.length > 0 && <StorageMeter used={usedBytes} limit={quotaBytes} />}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {selectMode && shownIds.length > 0 && (

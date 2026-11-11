@@ -6,6 +6,7 @@ import { LayoutGrid, Moon, Search, Sun, X } from 'lucide-react';
 import { OpenTab } from '@/lib/types';
 import { MODULES } from '@/lib/modules';
 import { useTheme } from '@/lib/useTheme';
+import AccountMenu from '@/components/AccountMenu';
 
 interface Props {
   tabs: OpenTab[];
@@ -89,16 +90,7 @@ export default function TabBar({ tabs, activeTabId, onSelect, onClose, onOpenSea
           </div>
         </LayoutGroup>
 
-        <button type="button" onClick={onOpenSearch} className="btn hidden sm:inline-flex" aria-label="Search">
-          <Search size={15} strokeWidth={2} style={{ color: 'var(--text-dim)' }} />
-          <span style={{ color: 'var(--text-dim)' }}>Search</span>
-          <span className="kbd">{modKey} K</span>
-        </button>
-        <button type="button" onClick={onOpenSearch} className="icon-btn sm:hidden" aria-label="Search">
-          <Search size={17} strokeWidth={2} />
-        </button>
-
-        <button
+               <button
           type="button"
           onClick={toggleTheme}
           className="icon-btn"
@@ -115,6 +107,8 @@ export default function TabBar({ tabs, activeTabId, onSelect, onClose, onOpenSea
             {theme === 'light' ? <Sun size={17} strokeWidth={2} /> : <Moon size={17} strokeWidth={2} />}
           </motion.span>
         </button>
+
+        <AccountMenu />
       </div>
     </MotionConfig>
   );

@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import "@fontsource-variable/inter";
 import "./globals.css";
+import { Analytics } from '@vercel/analytics/next';
+import { AuthProvider } from '@/lib/auth';
+import AuthGate from '@/components/AuthGate';
 
 export const metadata: Metadata = {
   title: "Highlights",
@@ -36,11 +39,16 @@ const themeInitScript = `
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-        <html lang="en" className="h-full antialiased" suppressHydrationWarning>
+    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body className="h-full">{children}</body>
+      <body className="h-full">
+        <AuthProvider>
+          <AuthGate>{children}</AuthGate>
+        </AuthProvider>
+        <Analytics />
+      </body>
     </html>
   );
 }

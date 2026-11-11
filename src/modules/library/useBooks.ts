@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { Book } from '@/lib/types';
 import { readPdfMeta } from './pdf';
 import { STORAGE_LIMIT_BYTES, canonicalTag, formatSize, formatStorage, parseFilename } from './helpers';
-import { R2NotConfigured, putWithProgress, r2 } from './r2';
+import { R2NotConfigured, fetchQuota, putWithProgress, r2 } from './r2';
 
 export const BUCKET = 'books'; // Supabase bucket: covers, plus any books added before cloud storage
 const MAX_CLOUD_BYTES = 300 * 1024 * 1024;
@@ -46,6 +46,14 @@ export function useBooks() {
   const queue = useRef<Promise<void>>(Promise.resolve());
   const booksRef = useRef<Book[]>([]);
   booksRef.current = books;
+
+  // How much storage this person is allowed (the server decides).
+  const [quotaBytes, setQuotaBytes] = useState(STORAGE_LIMIT_BYTES);
+  const quotaRef = useRef(quotaBytes);
+  quotaRef.current = quotaBytes;
+  useEffect(() => {
+    fetchQuota().then((q) => q && setQuotaBytes(q));
+  }, []);
 
   // Only the first load (or a retry) shows the loading state; realtime updates are quiet.
   const load = useCallback(async (showSpinner = false) => {
@@ -124,16 +132,18 @@ export function useBooks() {
           throw new Error(`This file is ${formatSize(file.size)}. Books can be up to 300 MB each.`);
         }
         const used = booksRef.current.reduce((sum, b) => sum + (b.size_bytes || 0), 0);
-        if (used + file.size > STORAGE_LIMIT_BYTES) {
+               if (used + file.size > quotaRef.current) {
           throw new Error(
-            `Not enough space: ${formatStorage(used)} of 10 GB used, and this book is ${formatStorage(file.size)}. Delete some books first.`
+            `Not enough space: ${formatStorage(used)} of ${formatStorage(quotaRef.current)} used, and this book is ${formatStorage(file.size)}. Delete some books first.`
           );
         }
 
+        const { data: auth } = await supabase.auth.getSession();
+        const uid = auth.session?.user.id;
+        if (!uid) throw new Error('Your session ended. Please sign in again.');
         const id = crypto.randomUUID();
-        const filePath = `${id}.pdf`;
-        const coverPath = `covers/${id}.jpg`;
-
+        const filePath = `${uid}/${id}.pdf`;
+        const coverPath = `${uid}/covers/${id}.jpg`;
         let meta;
         try {
           meta = await readPdfMeta(file);
@@ -153,7 +163,7 @@ export function useBooks() {
         // The big PDF goes to cloud storage. If that isn't set up yet, small books fall back to Supabase.
         let storage: 'r2' | 'supabase' = 'r2';
         try {
-          const { url } = await r2('put', id);
+                    const { url } = await r2('put', id, file.size);
           patchJob(jobId, { phase: 'uploading', progress: 0 });
           await putWithProgress(url as string, file, (p) => patchJob(jobId, { progress: p }));
         } catch (e) {
@@ -393,6 +403,7 @@ export function useBooks() {
     error,
     covers,
     jobs,
+    quotaBytes,
     reload: () => load(true),
     addFiles,
     dismissJob,

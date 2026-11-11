@@ -362,6 +362,13 @@ async function fetchAll<T>(table: string, columns: string): Promise<{ rows: T[];
 
 let cache: { at: number; raw: Raw } | null = null;
 
+// Called when someone signs out, so the next person never sees the last person's graph.
+export function clearGraphCache() {
+  cache = null;
+}
+
+
+
 export function useGraphData() {
   const [raw, setRaw] = useState<Raw | null>(cache?.raw ?? null);
   const [loading, setLoading] = useState(!cache);
