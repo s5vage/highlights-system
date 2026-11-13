@@ -10,6 +10,7 @@ import NotesModule from '@/modules/notes/NotesModule';
 import GraphModule from '@/modules/graph/GraphModule';
 import LibraryModule from '@/modules/library/LibraryModule';
 import BookLinkHandler from '@/modules/graph/BookLinkHandler';
+import SettingsModule from '@/modules/settings/SettingsModule';
 import { MODULES } from '@/lib/modules';
 import { ModuleId, OpenTab } from '@/lib/types';
 
@@ -110,13 +111,7 @@ export default function Page() {
         )}
         {activeTab.moduleId === 'graph' && <GraphModule onOpenModule={openModule} />}
                 {activeTab.moduleId === 'library' && <LibraryModule />}
-        {activeTab.moduleId === 'settings' && (
-          <PlaceholderModule
-            title="Settings"
-            icon="⚙️"
-            note="Account, theme, and connected devices will live here."
-          />
-        )}
+        {activeTab.moduleId === 'settings' && <SettingsModule />}
         {activeTab.moduleId === 'trash' && (
           <PlaceholderModule
             title="Trash"
