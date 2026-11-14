@@ -4,6 +4,7 @@ import "./globals.css";
 import { Analytics } from '@vercel/analytics/next';
 import { AuthProvider } from '@/lib/auth';
 import AuthGate from '@/components/AuthGate';
+import { PrefsProvider } from '@/lib/prefs';
 
 export const metadata: Metadata = {
   title: "Highlights",
@@ -45,7 +46,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="h-full">
         <AuthProvider>
+          <PrefsProvider>
           <AuthGate>{children}</AuthGate>
+          </PrefsProvider>
         </AuthProvider>
         <Analytics />
       </body>

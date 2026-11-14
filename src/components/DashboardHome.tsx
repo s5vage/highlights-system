@@ -1,24 +1,33 @@
 'use client';
 
+import { useMemo } from 'react';
 import { motion } from 'motion/react';
 import { MODULES } from '@/lib/modules';
 import { ModuleId } from '@/lib/types';
+import { usePrefs, visibleTiles } from '@/lib/prefs';
 
 interface Props {
   onOpenModule: (id: ModuleId) => void;
 }
 
 export default function DashboardHome({ onOpenModule }: Props) {
+  const { prefs } = usePrefs();
+  // The tiles you chose in Settings → Home screen, in the order you chose.
+  const tiles = useMemo(() => visibleTiles(MODULES, prefs), [prefs]);
+
   return (
     <div className="h-full overflow-y-auto" style={{ background: 'var(--bg)' }}>
       <div className="mx-auto max-w-5xl px-6 pb-16 pt-12 md:px-8 md:pt-16">
         <h1 className="text-[32px] font-semibold leading-tight tracking-[-0.022em]">Welcome back</h1>
         <p className="mt-1.5 text-[15px]" style={{ color: 'var(--text-dim)' }}>
-          Open a space to get started. Each one opens in its own tab.
+          Open a space to get started. Each one opens in its own tab.{' '}
+          <button type="button" className="font-medium hover:underline" style={{ color: 'var(--accent)' }} onClick={() => onOpenModule('settings')}>
+            Customize this screen
+          </button>
         </p>
 
         <div className="mt-9 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {MODULES.map((m) => {
+          {tiles.map((m) => {
             const Icon = m.icon;
             return (
               <motion.button
@@ -27,6 +36,7 @@ export default function DashboardHome({ onOpenModule }: Props) {
                 whileTap={{ scale: 0.98 }}
                 onClick={() => onOpenModule(m.id)}
                 className="tile"
+                data-tile={m.id}
                 style={{ '--hue': `var(--hue-${m.hue})` } as React.CSSProperties}
               >
                 <span className="tile-badge">

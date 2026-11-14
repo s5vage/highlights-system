@@ -1557,3 +1557,14 @@ html:not([data-theme='light']) {
     opacity: 0.9;
   }
 }
+
+
+/* ─── Accent colours (Settings → Appearance). "Blue" is the default and adds nothing. ─── */
+html[data-accent='purple']:not([data-theme='light']) { --accent: #b39dff; }
+html[data-accent='purple'][data-theme='light'] { --accent: #7048e8; }
+html[data-accent='green']:not([data-theme='light']) { --accent: #62d394; }
+html[data-accent='green'][data-theme='light'] { --accent: #1f9d55; }
+html[data-accent='pink']:not([data-theme='light']) { --accent: #f58ec1; }
+html[data-accent='pink'][data-theme='light'] { --accent: #d6336c; }
+html[data-accent='orange']:not([data-theme='light']) { --accent: #ffa94d; }
+html[data-accent='orange'][data-theme='light'] { --accent: #d9480f; }

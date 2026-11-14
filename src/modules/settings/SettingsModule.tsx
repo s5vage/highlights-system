@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { BarChart3, FileDown, FileText, KeyRound, LogOut, Mail, MonitorSmartphone, ShieldAlert, Trash2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
+import PreferencesCards from './PreferencesCards';
 import { friendlyAuthError } from '@/components/LoginScreen';
 import { fetchQuota } from '@/modules/library/r2';
 import { buildJson, buildMarkdown, download, fetchEverything } from './exportData';
@@ -263,9 +264,12 @@ export default function SettingsModule() {
     <div className="h-full overflow-y-auto" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
       <div className="mx-auto max-w-[720px] px-5 pb-24 pt-10 md:px-6">
         <h1 className="text-[32px] font-semibold tracking-[-0.025em]">Settings</h1>
-        <p className="mt-1 text-[14.5px]" style={{ color: 'var(--text-dim)' }}>
-          Your account, your storage, and your data.
-        </p>
+
+<p className="mt-1 text-[14.5px]" style={{ color: 'var(--text-dim)' }}>
+  Your look, your home screen, your account, and your data.
+</p>
+
+<PreferencesCards />
 
         <Card title="Account">
           <Row label="Email" hint={email} icon={<Mail size={16} strokeWidth={1.9} />} action={<button type="button" className={quiet} style={{ background: 'var(--fill-strong)' }} onClick={() => open('email')}>Change</button>}>

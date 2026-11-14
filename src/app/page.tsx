@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import TabBar from '@/components/TabBar';
 import DashboardHome from '@/components/DashboardHome';
 import GlobalSearch from '@/components/GlobalSearch';
@@ -12,8 +12,8 @@ import LibraryModule from '@/modules/library/LibraryModule';
 import BookLinkHandler from '@/modules/graph/BookLinkHandler';
 import SettingsModule from '@/modules/settings/SettingsModule';
 import { MODULES } from '@/lib/modules';
+import { usePrefs } from '@/lib/prefs';
 import { ModuleId, OpenTab } from '@/lib/types';
-
 
 const HOME_TAB: OpenTab = {
   tabId: 'home',
@@ -32,6 +32,8 @@ export default function Page() {
   const [activeTabId, setActiveTabId] = useState('home');
   const [showSearch, setShowSearch] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
+  const { prefs, settled } = usePrefs();
+  const startedRef = useRef(false);
 
   function openModule(id: ModuleId, focusId?: string) {
     const existing = tabs.find((t) => t.moduleId === id);
@@ -61,6 +63,15 @@ export default function Page() {
     });
   }
 
+  // Once, when you arrive: open the tab you chose in Settings (Home stays open behind it).
+  useEffect(() => {
+    if (!settled || startedRef.current) return;
+    startedRef.current = true;
+    const want = prefs.startTab;
+    if (want !== 'home' && MODULES.some((m) => m.id === want)) openModule(want as ModuleId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settled]);
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -85,9 +96,7 @@ export default function Page() {
       />
 
       <div className="flex-1 min-h-0">
-        {activeTab.moduleId === 'home' && (
-          <DashboardHome onOpenModule={openModule} />
-        )}
+        {activeTab.moduleId === 'home' && <DashboardHome onOpenModule={openModule} />}
 
         {activeTab.moduleId === 'highlights' && (
           <HighlightsModule
@@ -96,12 +105,12 @@ export default function Page() {
           />
         )}
         {activeTab.moduleId === 'notes' && (
-  <NotesModule
-    pendingId={pendingSelection?.module === 'notes' ? pendingSelection.id : null}
-    onConsumedPending={() => setPendingSelection(null)}
-    onOpenModule={openModule}
-  />
-)}
+          <NotesModule
+            pendingId={pendingSelection?.module === 'notes' ? pendingSelection.id : null}
+            onConsumedPending={() => setPendingSelection(null)}
+            onOpenModule={openModule}
+          />
+        )}
         {activeTab.moduleId === 'canvas' && (
           <PlaceholderModule
             title="Canvas"
@@ -110,7 +119,7 @@ export default function Page() {
           />
         )}
         {activeTab.moduleId === 'graph' && <GraphModule onOpenModule={openModule} />}
-                {activeTab.moduleId === 'library' && <LibraryModule />}
+        {activeTab.moduleId === 'library' && <LibraryModule />}
         {activeTab.moduleId === 'settings' && <SettingsModule />}
         {activeTab.moduleId === 'trash' && (
           <PlaceholderModule
@@ -121,10 +130,10 @@ export default function Page() {
         )}
       </div>
 
-      {showSearch && (
-        <GlobalSearch onClose={() => setShowSearch(false)} onOpenModule={openModule} />
-      )}
+      {showSearch && <GlobalSearch onClose={() => setShowSearch(false)} onOpenModule={openModule} />}
+
+      {/* Opens a book when you click a [[link]] whose text is a book's title */}
+      <BookLinkHandler onOpenModule={openModule} />
     </div>
   );
-  <BookLinkHandler onOpenModule={openModule} />
 }
