@@ -52,6 +52,8 @@ export default function Page() {
     }
     if (focusId) setPendingSelection({ module: id, id: focusId });
   }
+  const openRef = useRef(openModule);
+  openRef.current = openModule;
 
   function closeTab(tabId: string) {
     setTabs((prev) => {
@@ -71,6 +73,16 @@ export default function Page() {
     if (want !== 'home' && MODULES.some((m) => m.id === want)) openModule(want as ModuleId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settled]);
+
+  // The account menu (Settings, Trash) asks for tabs this way, so the tab bar needs no changes.
+  useEffect(() => {
+    function onOpen(e: Event) {
+      const id = (e as CustomEvent<{ id?: string }>).detail?.id;
+      if (id && MODULES.some((m) => m.id === id)) openRef.current(id as ModuleId);
+    }
+    window.addEventListener('hl-open-module', onOpen);
+    return () => window.removeEventListener('hl-open-module', onOpen);
+  }, []);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -96,7 +108,7 @@ export default function Page() {
       />
 
       <div className="flex-1 min-h-0">
-        {activeTab.moduleId === 'home' && <DashboardHome onOpenModule={openModule} />}
+        {activeTab.moduleId === 'home' && <DashboardHome onOpenModule={openModule} onOpenSearch={() => setShowSearch(true)} />}
 
         {activeTab.moduleId === 'highlights' && (
           <HighlightsModule

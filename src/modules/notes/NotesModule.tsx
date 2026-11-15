@@ -111,6 +111,21 @@ export default function NotesModule({ pendingId, onConsumedPending, onOpenModule
     }
   }
 
+    // Quick actions on Home ("New note", "Today's journal") leave a note for us to act on.
+  useEffect(() => {
+    if (loading) return;
+    let intent: string | null = null;
+    try {
+      intent = sessionStorage.getItem('notes_intent');
+      sessionStorage.removeItem('notes_intent');
+    } catch {
+      /* ignore */
+    }
+    if (intent === 'new') handleCreate();
+    else if (intent === 'journal') changeScope('journal');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
   function changeScope(next: string) {
     setScope(next);
     setQuery('');

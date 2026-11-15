@@ -27,8 +27,10 @@ export interface Prefs {
 }
 
 export const DEFAULT_PREFS: Prefs = { theme: 'system', accent: 'blue', startTab: 'home', tileOrder: [], tileHidden: [] };
-// Settings can never be hidden, or there would be no way back to these switches.
-export const ALWAYS_SHOWN = ['settings'];
+// Nothing is locked on Home any more: Settings and Trash live in the account menu instead.
+export const ALWAYS_SHOWN: string[] = [];
+// These two are never shown as links on Home (they are in the account menu).
+export const NOT_ON_HOME = ['settings', 'trash'];
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, 50) : []);
 

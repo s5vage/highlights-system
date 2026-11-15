@@ -6,6 +6,7 @@ import { BarChart3, FileDown, FileText, KeyRound, LogOut, Mail, MonitorSmartphon
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import PreferencesCards from './PreferencesCards';
+import NameRow from './NameRow';
 import { friendlyAuthError } from '@/components/LoginScreen';
 import { fetchQuota } from '@/modules/library/r2';
 import { buildJson, buildMarkdown, download, fetchEverything } from './exportData';
@@ -272,6 +273,7 @@ export default function SettingsModule() {
 <PreferencesCards />
 
         <Card title="Account">
+           <NameRow />
           <Row label="Email" hint={email} icon={<Mail size={16} strokeWidth={1.9} />} action={<button type="button" className={quiet} style={{ background: 'var(--fill-strong)' }} onClick={() => open('email')}>Change</button>}>
             {panel === 'email' && (
               <form className="mt-3 grid gap-2.5" onSubmit={changeEmail} noValidate>

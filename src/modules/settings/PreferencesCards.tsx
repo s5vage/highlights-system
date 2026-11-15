@@ -2,7 +2,7 @@
 
 import { ChevronDown, ChevronUp, Monitor, Moon, RotateCcw, Sun } from 'lucide-react';
 import { MODULES } from '@/lib/modules';
-import { ACCENTS, ACCENT_COLORS, ALWAYS_SHOWN, Accent, ThemePref, resolveTheme, sortTiles, usePrefs } from '@/lib/prefs';
+import { ACCENTS, ACCENT_COLORS, ALWAYS_SHOWN, Accent, ThemePref, resolveTheme, sortTiles, usePrefs, NOT_ON_HOME } from '@/lib/prefs';
 
 function Card({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -64,7 +64,7 @@ const THEME_OPTIONS: { id: ThemePref; label: string; Icon: typeof Sun }[] = [
 export default function PreferencesCards() {
   const { prefs, setPrefs, resetHome, sync } = usePrefs();
   const resolved = typeof window !== 'undefined' ? resolveTheme(prefs.theme) : 'dark';
-  const ordered = sortTiles(MODULES, prefs.tileOrder);
+    const ordered = sortTiles(MODULES.filter((m) => !NOT_ON_HOME.includes(m.id)), prefs.tileOrder);
 
   function move(id: string, dir: -1 | 1) {
     const ids: string[] = ordered.map((m) => m.id);
@@ -122,7 +122,7 @@ export default function PreferencesCards() {
         </Row>
       </Card>
 
-      <Card title="Home screen" hint="Choose what opens first, and which tiles show on Home.">
+      <Card title="Home screen" hint="Choose what opens first, and which spaces are linked on Home.">
         <Row label="Open this first" hint="The tab you land on when you open the app.">
           <select
             aria-label="Open this first"
