@@ -1575,3 +1575,12 @@ html[data-accent='orange'][data-theme='light'] { --accent: #d9480f; }
 @keyframes hm-shimmer { to { background-position: -200% 0; } }
 .hm-skel { background: linear-gradient(90deg, var(--fill) 25%, var(--fill-strong) 37%, var(--fill) 63%); background-size: 200% 100%; animation: hm-shimmer 1.4s ease-in-out infinite; border-radius: 6px; }
 @media (prefers-reduced-motion: reduce) { .hm-skel { animation: none; } }
+
+/* ─── Home: phones and tablets ─── */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+.hm-wrap { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+@media (min-width: 640px) { .hm-wrap { padding-left: max(24px, env(safe-area-inset-left)); padding-right: max(24px, env(safe-area-inset-right)); } }
+.hm-noscroll { scrollbar-width: none; -ms-overflow-style: none; scroll-snap-type: x proximity; scroll-padding-inline: 16px; overscroll-behavior-x: contain; }
+.hm-noscroll::-webkit-scrollbar { display: none; }
+@media (hover: none), (max-width: 639px) { .hm-kbd { display: none; } }
+@media (pointer: coarse) { .pop .menu-item { height: 44px; } }

@@ -26,7 +26,7 @@ export default function AccountMenu() {
           aria-label="Account"
           aria-expanded={open}
           title={email}
-          className="grid h-7 w-7 place-items-center rounded-full text-[12px] font-semibold outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+                    className="grid h-7 w-7 place-items-center rounded-full text-[12px] font-semibold outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
           style={{ background: 'var(--fill-strong)', color: 'var(--text)', boxShadow: 'inset 0 0 0 1px var(--hairline)' }}
         >
           {(name || email).slice(0, 1).toUpperCase()}

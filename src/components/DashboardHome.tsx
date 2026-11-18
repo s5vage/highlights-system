@@ -43,7 +43,7 @@ function statLine(d: ReturnType<typeof useHomeData>['data']): string {
 
 function Section({ eyebrow, title, children }: { eyebrow: string; title: string; children: React.ReactNode }) {
   return (
-    <section className="mt-8">
+    <section className="mt-7 sm:mt-8">
       <div className="text-[11px] font-semibold uppercase tracking-[0.06em]" style={{ color: 'var(--text-faint)' }}>
         {eyebrow}
       </div>
@@ -61,7 +61,7 @@ function Empty({ title, body, action }: { title: string; body: string; action?: 
   return (
     <div className="rounded-[10px] border border-dashed px-4 py-4" style={{ borderColor: 'var(--border)' }}>
       <div className="text-[13.5px] font-medium">{title}</div>
-      <div className="mt-0.5 text-[13px]" style={{ color: 'var(--text-dim)' }}>
+      <div className="mt-0.5 text-[13px] [overflow-wrap:anywhere]" style={{ color: 'var(--text-dim)' }}>
         {body}
       </div>
       {action}
@@ -69,7 +69,7 @@ function Empty({ title, body, action }: { title: string; body: string; action?: 
   );
 }
 
-const textAction = `mt-2.5 rounded text-[13px] font-medium underline underline-offset-2 ${RING}`;
+const textAction = `mt-1.5 inline-flex h-11 items-center rounded text-[13px] font-medium underline underline-offset-2 sm:mt-2.5 sm:h-auto ${RING}`;
 
 function Cover({ book, url }: { book: BookLite; url?: string }) {
   return url ? (
@@ -156,11 +156,11 @@ export default function DashboardHome({ onOpenModule, onOpenSearch }: Props) {
 
   return (
     <div className="h-full overflow-y-auto" style={{ background: 'var(--bg)' }}>
-      <div className="mx-auto max-w-[880px] px-6 pb-16 pt-10">
-        <h1 className="text-[26px] font-semibold leading-8 tracking-[-0.02em]" suppressHydrationWarning>
+      <div className="hm-wrap mx-auto max-w-[880px] px-4 pb-[calc(4rem+env(safe-area-inset-bottom))] pt-6 sm:px-6 sm:pt-10">
+        <h1 className="text-[24px] font-semibold leading-8 tracking-[-0.02em] [overflow-wrap:anywhere] sm:text-[26px]">
           {hello}
         </h1>
-        <p className="mt-1 min-h-5 text-[14px]" style={{ color: 'var(--text-dim)' }} suppressHydrationWarning>
+        <p className="mt-1 min-h-5 text-[14px] [overflow-wrap:anywhere]" style={{ color: 'var(--text-dim)' }}>
           {statLine(data)}
           {data && !name && (
             <>
@@ -177,7 +177,7 @@ export default function DashboardHome({ onOpenModule, onOpenSearch }: Props) {
           type="button"
           data-search-button
           onClick={onOpenSearch}
-          className={`mt-6 flex h-11 w-full items-center gap-3 rounded-[10px] border px-3.5 text-left text-[14px] transition-colors hover:border-[var(--border)] ${RING}`}
+          className={`mt-5 flex h-12 w-full items-center gap-3 rounded-[10px] border px-3.5 text-left text-[14px] transition-colors hover:border-[var(--border)] sm:mt-6 sm:h-11 ${RING}`}
           style={{ ...LINE, background: 'var(--surface)', color: 'var(--text-faint)' }}
         >
           <Search size={16} strokeWidth={1.75} />
@@ -185,29 +185,34 @@ export default function DashboardHome({ onOpenModule, onOpenSearch }: Props) {
           <kbd className="hm-kbd">{mod} K</kbd>
         </button>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button type="button" onClick={newNote} className={`flex h-9 items-center gap-2 rounded-lg px-3.5 text-[13.5px] font-semibold transition hover:brightness-110 ${RING}`} style={{ background: 'var(--accent)', color: 'var(--bg)' }}>
-            <NotebookPen size={15} strokeWidth={1.75} /> New note <kbd className="hm-kbd hm-kbd-on-accent">N</kbd>
+        <div className="mt-3 grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
+          <button type="button" onClick={newNote} className={`flex h-14 flex-col items-center justify-center gap-1 rounded-[10px] text-[12.5px] font-semibold transition hover:brightness-110 sm:h-9 sm:flex-row sm:gap-2 sm:rounded-lg sm:px-3.5 sm:text-[13.5px] ${RING}`} style={{ background: 'var(--accent)', color: 'var(--bg)' }}>
+            <NotebookPen size={17} strokeWidth={1.75} /> <span>New note</span> <kbd className="hm-kbd hm-kbd-on-accent">N</kbd>
           </button>
-          <button type="button" onClick={addBook} className={`flex h-9 items-center gap-2 rounded-lg border px-3.5 text-[13.5px] font-medium ${HOVER} ${RING}`} style={LINE}>
-            <FilePlus2 size={15} strokeWidth={1.75} /> Add book <kbd className="hm-kbd">B</kbd>
+          <button type="button" onClick={addBook} className={`flex h-14 flex-col items-center justify-center gap-1 rounded-[10px] border text-[12.5px] font-medium sm:h-9 sm:flex-row sm:gap-2 sm:rounded-lg sm:px-3.5 sm:text-[13.5px] ${HOVER} ${RING}`} style={LINE}>
+            <FilePlus2 size={17} strokeWidth={1.75} /> <span>Add book</span> <kbd className="hm-kbd">B</kbd>
           </button>
-          <button type="button" onClick={journal} className={`flex h-9 items-center gap-2 rounded-lg border px-3.5 text-[13.5px] font-medium ${HOVER} ${RING}`} style={LINE}>
-            <CalendarDays size={15} strokeWidth={1.75} /> Today&rsquo;s journal <kbd className="hm-kbd">J</kbd>
+          <button type="button" onClick={journal} className={`flex h-14 flex-col items-center justify-center gap-1 rounded-[10px] border text-[12.5px] font-medium sm:h-9 sm:flex-row sm:gap-2 sm:rounded-lg sm:px-3.5 sm:text-[13.5px] ${HOVER} ${RING}`} style={LINE}>
+            <CalendarDays size={17} strokeWidth={1.75} />
+            <span>
+              <span className="sm:hidden">Journal</span>
+              <span className="hidden sm:inline">Today&rsquo;s journal</span>
+            </span>
+            <kbd className="hm-kbd">J</kbd>
           </button>
         </div>
 
-        <nav className="mt-4 flex flex-wrap items-center gap-0.5" aria-label="Spaces">
+        <nav className="hm-noscroll -mx-4 mt-3 flex items-center gap-1 overflow-x-auto px-4 sm:mx-0 sm:mt-4 sm:flex-wrap sm:gap-0.5 sm:overflow-visible sm:px-0" aria-label="Spaces">
           {links.map((m) => {
             const Icon = m.icon;
             return (
-              <button key={m.id} type="button" data-link={m.id} onClick={() => onOpenModule(m.id)} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] ${HOVER} ${RING}`} style={{ color: 'var(--text-dim)' }}>
+              <button key={m.id} type="button" data-link={m.id} onClick={() => onOpenModule(m.id)} className={`flex h-11 shrink-0 items-center gap-1.5 rounded-lg px-3 text-[13px] sm:h-8 sm:px-2.5 ${HOVER} ${RING}`} style={{ color: 'var(--text-dim)' }}>
                 <Icon size={14} strokeWidth={1.75} /> {m.label}
               </button>
             );
           })}
-          <span className="flex-1" />
-          <button type="button" onClick={() => onOpenModule('settings')} className={`flex h-8 items-center rounded-lg px-2.5 text-[13px] ${HOVER} ${RING}`} style={{ color: 'var(--text-faint)' }}>
+          <span className="hidden flex-1 sm:block" />
+          <button type="button" onClick={() => onOpenModule('settings')} className={`flex h-11 shrink-0 items-center rounded-lg px-3 text-[13px] sm:h-8 sm:px-2.5 ${HOVER} ${RING}`} style={{ color: 'var(--text-faint)' }}>
             Customize
           </button>
         </nav>
@@ -221,16 +226,16 @@ export default function DashboardHome({ onOpenModule, onOpenSearch }: Props) {
         {!data && !failed && (
           <div aria-busy="true" aria-label="Loading your work">
             <Section eyebrow="Library" title="Continue reading">
-              <div className="grid grid-cols-3 gap-4 sm:grid-cols-4 lg:grid-cols-6">
+              <div className="hm-noscroll -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-4 sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-6">
                 {Array.from({ length: 6 }, (_, i) => (
-                  <div key={i}>
+                  <div key={i} className="w-[108px] shrink-0 sm:w-auto">
                     <Skel className="aspect-[2/3] rounded-lg" />
                     <Skel className="mt-2 h-3 w-4/5" />
                   </div>
                 ))}
               </div>
             </Section>
-            <div className="grid gap-x-8 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
               {[0, 1].map((c) => (
                 <Section key={c} eyebrow={c ? 'Notes' : 'Highlights'} title={c ? 'Recent notes' : 'Recent highlights'}>
                   {Array.from({ length: 4 }, (_, i) => (
@@ -259,11 +264,11 @@ export default function DashboardHome({ onOpenModule, onOpenSearch }: Props) {
                   }
                 />
               ) : (
-                <div className="grid grid-cols-3 gap-4 sm:grid-cols-4 lg:grid-cols-6">
+                <div className="hm-noscroll -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-4 sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-6">
                   {data.books.map((b) => {
                     const pct = b.page_count && b.last_page && b.last_page > 1 ? Math.min(100, Math.round((b.last_page / b.page_count) * 100)) : 0;
                     return (
-                      <button key={b.id} type="button" data-book={b.id} title={b.title} onClick={() => openBook(b.id)} className={`group self-start rounded-lg text-left ${RING}`}>
+                      <button key={b.id} type="button" data-book={b.id} title={b.title} onClick={() => openBook(b.id)} className={`group w-[108px] shrink-0 snap-start self-start rounded-lg text-left sm:w-auto sm:min-w-0 ${RING}`}>
                         <div className="aspect-[2/3] overflow-hidden rounded-lg border transition-colors group-hover:border-[var(--border)]" style={LINE}>
                           <Cover book={b} url={b.cover_path ? data.covers[b.cover_path] : undefined} />
                         </div>
@@ -272,7 +277,7 @@ export default function DashboardHome({ onOpenModule, onOpenSearch }: Props) {
                             <div className="h-full rounded-full" style={{ width: `${pct}%`, background: 'var(--accent)' }} />
                           </div>
                         )}
-                        <div className="mt-1.5 line-clamp-2 text-[12.5px] font-medium leading-snug">{b.title}</div>
+                        <div className="mt-1.5 line-clamp-2 text-[12.5px] font-medium leading-snug [overflow-wrap:anywhere]">{b.title}</div>
                         {pct > 0 && (
                           <div className="mt-0.5 text-[11.5px]" style={{ color: 'var(--text-faint)' }}>
                             {pct}%
@@ -285,7 +290,7 @@ export default function DashboardHome({ onOpenModule, onOpenSearch }: Props) {
               )}
             </Section>
 
-            <div className="grid gap-x-8 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
               <Section eyebrow="Highlights" title="Recent highlights">
                 {data.highlights.length === 0 ? (
                   <Empty title="No highlights yet" body="Select text on any web page with the clipper, or inside a book, and it appears here." />
@@ -293,9 +298,9 @@ export default function DashboardHome({ onOpenModule, onOpenSearch }: Props) {
                   <ul>
                     {data.highlights.map((h: HL) => (
                       <li key={h.id} className="border-t" style={LINE}>
-                        <button type="button" data-highlight={h.id} onClick={() => onOpenModule('highlights', h.id)} className={`-mx-2 block w-[calc(100%+16px)] rounded-lg px-2 py-2.5 text-left ${HOVER} ${RING}`}>
-                          <div className="line-clamp-2 text-[13.5px] leading-snug">{h.text}</div>
-                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px]" style={{ color: 'var(--text-faint)' }}>
+                        <button type="button" data-highlight={h.id} onClick={() => onOpenModule('highlights', h.id)} className={`-mx-2 block w-[calc(100%+16px)] rounded-lg px-2 py-3 text-left sm:py-2.5 ${HOVER} ${RING}`}>
+                          <div className="line-clamp-2 text-[13.5px] leading-snug [overflow-wrap:anywhere]">{h.text}</div>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] [overflow-wrap:anywhere]" style={{ color: 'var(--text-faint)' }}>
                             {(h.tags ?? []).slice(0, 3).map((t) => (
                               <span key={t}>#{t}</span>
                             ))}
@@ -324,7 +329,7 @@ export default function DashboardHome({ onOpenModule, onOpenSearch }: Props) {
                   <ul>
                     {data.notes.map((n: NoteLite) => (
                       <li key={n.id} className="border-t" style={LINE}>
-                        <button type="button" data-note={n.id} onClick={() => onOpenModule('notes', n.id)} className={`-mx-2 block w-[calc(100%+16px)] rounded-lg px-2 py-2.5 text-left ${HOVER} ${RING}`}>
+                        <button type="button" data-note={n.id} onClick={() => onOpenModule('notes', n.id)} className={`-mx-2 block w-[calc(100%+16px)] rounded-lg px-2 py-3 text-left sm:py-2.5 ${HOVER} ${RING}`}>
                           <div className="flex items-baseline justify-between gap-3">
                             <span className="truncate text-[13.5px] font-medium">{n.is_journal ? `Journal ${n.journal_date ?? ''}` : n.title || 'Untitled'}</span>
                             <span className="shrink-0 text-[12px]" style={{ color: 'var(--text-faint)' }}>
@@ -345,7 +350,7 @@ export default function DashboardHome({ onOpenModule, onOpenSearch }: Props) {
             <Section eyebrow="Daily review" title="From your library">
               {data.review ? (
                 <figure className="rounded-[10px] border px-4 py-3.5" style={LINE} data-review={data.review.id}>
-                  <blockquote className="line-clamp-6 border-l-2 pl-3 text-[15px] leading-relaxed" style={{ borderColor: 'var(--border)' }}>
+                  <blockquote className="line-clamp-6 border-l-2 pl-3 text-[15px] leading-relaxed [overflow-wrap:anywhere]" style={{ borderColor: 'var(--border)' }}>
                     {data.review.text}
                   </blockquote>
                   <figcaption className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px]" style={{ color: 'var(--text-faint)' }}>
@@ -355,11 +360,11 @@ export default function DashboardHome({ onOpenModule, onOpenSearch }: Props) {
                     ))}
                     <span className="flex-1" />
                     {data.reviewPool > 1 && (
-                      <button type="button" onClick={another} className={`rounded px-1 ${HOVER} ${RING}`} style={{ color: 'var(--text-dim)' }}>
+                      <button type="button" onClick={another} className={`inline-flex h-11 items-center rounded px-2 sm:h-auto sm:px-1 ${HOVER} ${RING}`} style={{ color: 'var(--text-dim)' }}>
                         Show another
                       </button>
                     )}
-                    <button type="button" onClick={() => onOpenModule('highlights', data.review!.id)} className={`rounded px-1 ${HOVER} ${RING}`} style={{ color: 'var(--text-dim)' }}>
+                    <button type="button" onClick={() => onOpenModule('highlights', data.review!.id)} className={`inline-flex h-11 items-center rounded px-2 sm:h-auto sm:px-1 ${HOVER} ${RING}`} style={{ color: 'var(--text-dim)' }}>
                       Open
                     </button>
                   </figcaption>
